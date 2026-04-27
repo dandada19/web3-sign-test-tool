@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Solana Authority Change — Parse Transaction Test DApp</title>
+<style>
+  body { font-family: -apple-system, system-ui, sans-serif; max-width: 960px; margin: 20px auto; padding: 0 20px; color: #222; }
+  h1 { font-size: 1.4em; margin-bottom: 4px; }
+  .subtitle { color: #666; font-size: 0.85em; margin-bottom: 20px; }
+  section { border: 1px solid #ddd; border-radius: 8px; padding: 16px; margin-bottom: 16px; background: #fff; }
+  h2 { font-size: 1em; margin: 0 0 12px 0; }
+  label { display: block; margin-bottom: 8px; font-size: 0.9em; }
+  input[type=text], select { width: 100%; padding: 6px 8px; font-family: ui-monospace, Menlo, monospace; box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px; }
+  button { padding: 6px 14px; margin-right: 8px; cursor: pointer; border-radius: 4px; border: 1px solid #ccc; background: #f6f6f6; }
+  button.primary { background: #f3ba2f; border: 1px solid #d4a017; font-weight: 600; }
+  button:disabled { opacity: 0.45; cursor: not-allowed; }
+  pre { background: #f5f5f5; padding: 8px; border-radius: 4px; white-space: pre-wrap; word-break: break-all; font-size: 0.78em; max-height: 160px; overflow: auto; margin: 4px 0 8px; }
+  .status { padding: 8px 12px; border-radius: 4px; background: #eef; margin-bottom: 12px; font-size: 0.9em; }
+  .err { background: #fee; color: #a00; }
+  .ok  { background: #efe; color: #070; }
+  .warn { background: #fffbe0; color: #855; font-size: 0.85em; padding: 8px 12px; border-radius: 4px; margin-bottom: 10px; border: 1px solid #f0dc8a; }
+  .tabs { display: flex; gap: 4px; margin-bottom: 12px; border-bottom: 1px solid #ddd; }
+  .tab { padding: 8px 14px; cursor: pointer; border: 1px solid transparent; border-bottom: none; border-radius: 4px 4px 0 0; font-size: 0.9em; }
+  .tab.active { border-color: #ddd; background: #fff; margin-bottom: -1px; font-weight: 600; }
+  .panel { display: none; }
+  .panel.active { display: block; }
+  small.hint { display: block; color: #666; margin-top: -4px; margin-bottom: 8px; font-size: 0.8em; }
+</style>
+</head>
+<body>
+
+<h1>Solana Authority Change — Parse Transaction Test DApp</h1>
+<div class="subtitle">Triggers Binance wallet's <code>parse-transaction</code> API (PR 773) for Solana authority changes. Mainnet-beta.</div>
+
+<div class="warn">
+  <strong>Mainnet warning.</strong> This page builds <em>real</em> SetAuthority / Assign transactions on Solana mainnet-beta.
+  Use <b>Sign only</b> first — it is enough to trigger <code>parse-transaction</code> inside the wallet's signing prompt, without touching on-chain state. <b>Sign &amp; Send</b> will permanently change authorities.
+</div>
+
+<section id="wallet">
+  <h2>1. Connect Wallet</h2>
+  <div id="status" class="status">Not connected</div>
+  <button id="connect" class="primary">Connect Binance Wallet</button>
+  <button id="disconnect" disabled>Disconnect</button>
+  <label style="margin-top:12px">
+    RPC URL (used for auto-discovery of your token accounts; <b>not required</b> — you can paste token account pubkey manually below):
+    <input type="text" id="rpc" value="https://solana.drpc.org">
+    <small class="hint">Auto-fallback: drpc → metaplex → publicnode → onfinality → ankr → official. If all block you, use a private RPC (Helius free tier gives 100k req/day: <code>https://mainnet.helius-rpc.com/?api-key=YOUR_KEY</code>).</small>
+  </label>
+</section>
+
+<section id="tx">
+  <h2>2. Build &amp; Sign Transaction</h2>
+  <div class="tabs">
+    <div class="tab active" data-mode="owner">SetAuthority · AccountOwner</div>
+    <div class="tab" data-mode="close">SetAuthority · CloseAccount</div>
+    <div class="tab" data-mode="assign">System Assign</div>
+  </div>
+
+  <div class="panel active" id="panel-owner">
+    <small class="hint">PR 773 expects <code>type=token_account_owner</code>. Signer must currently own the token account.</small>
+    <label>Pick from my token accounts:
+      <select id="owner-pick" disabled><option>(connect wallet first)</option></select>
+    </label>
+    <button type="button" class="reload" data-target="owner">Reload accounts</button>
+    <label style="margin-top:8px">SPL Token Account pubkey:
+      <input type="text" id="owner-tokenAccount" value="BRDdkLdhWgokZYa2afnt6uyy6P2MCKgHNpH9h7tW8S8t" placeholder="pasted or auto-filled from dropdown">
+    </label>
+    <label>New Owner (target authority):
+      <input type="text" id="owner-newAuthority" value="3pqbsXSYbePK58AMZu52tKj1rLNX3mWPSvV1xDDaTtjx" placeholder="new owner pubkey">
+    </label>
+    <label>Token Program:
+      <select id="owner-program">
+        <option value="TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA">SPL Token (legacy)</option>
+        <option value="TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb">Token-2022</option>
+      </select>
+    </label>
+  </div>
+
+  <div class="panel" id="panel-close">
+    <small class="hint">PR 773 expects <code>type=token_close</code>. Changes the CloseAccount authority of a token account.</small>
+    <label>Pick from my token accounts:
+      <select id="close-pick" disabled><option>(connect wallet first)</option></select>
+    </label>
+    <button type="button" class="reload" data-target="close">Reload accounts</button>
+    <label style="margin-top:8px">SPL Token Account pubkey:
+      <input type="text" id="close-tokenAccount" value="BRDdkLdhWgokZYa2afnt6uyy6P2MCKgHNpH9h7tW8S8t" placeholder="pasted or auto-filled from dropdown">
+    </label>
+    <label>New Close Authority (target):
+      <input type="text" id="close-newAuthority" value="3pqbsXSYbePK58AMZu52tKj1rLNX3mWPSvV1xDDaTtjx" placeholder="new close authority pubkey">
+    </label>
+    <label>Token Program:
+      <select id="close-program">
+        <option value="TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA">SPL Token (legacy)</option>
+        <option value="TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb">Token-2022</option>
+      </select>
+    </label>
+  </div>
+
+  <div class="panel" id="panel-assign">
+    <div class="warn" style="margin-top:0">
+      ⚠️ <b>Irreversible on mainnet.</b> <code>SystemProgram.assign</code> transfers the connected wallet account's owner program away from System Program. After broadcast, that wallet can no longer sign via System Program and will lose its SOL. Strongly prefer <b>Sign only</b>.
+    </div>
+    <small class="hint">PR 773 expects <code>type=account_owner</code>. The signer <em>is</em> the account being reassigned.</small>
+    <label>Target Program (new owner program):
+      <input type="text" id="assign-program" value="3pqbsXSYbePK58AMZu52tKj1rLNX3mWPSvV1xDDaTtjx" placeholder="e.g. TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA">
+    </label>
+  </div>
+
+  <div style="margin-top: 16px;">
+    <button id="signOnly" class="primary" disabled>Sign only</button>
+    <button id="signAndSend" disabled>Sign &amp; Send</button>
+  </div>
+</section>
+
+<section id="output">
+  <h2>3. Result</h2>
+  <label>Unsigned Tx (base64):
+    <pre id="out-unsigned">(none)</pre>
+  </label>
+  <label>Signed Tx (base64):
+    <pre id="out-signed">(none)</pre>
+  </label>
+  <label>Broadcast signature:
+    <pre id="out-sig">(none)</pre>
+  </label>
+</section>
+
+<script type="module">
+import {
+  Connection, PublicKey, Transaction, TransactionInstruction, SystemProgram,
+} from 'https://esm.sh/@solana/web3.js@1.95.3?bundle';
+
+const TOKEN_PROGRAM_ID    = new PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA');
+const TOKEN_2022_PROGRAM_ID = new PublicKey('TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb');
+
+const state = {
+  provider: null,
+  publicKey: null,
+  conn: null,
+  mode: 'owner',
+  tokenAccounts: [], // [{pubkey, mint, amount, decimals, uiAmount, program}]
+};
+
+const $ = id => document.getElementById(id);
+const setStatus = (msg, cls='') => { const e = $('status'); e.textContent = msg; e.className = 'status ' + cls; };
+
+function getProvider() {
+  return window.binancew3w?.solana || window.solana || null;
+}
+
+async function connect() {
+  const p = getProvider();
+  if (!p) {
+    setStatus('Binance wallet provider not found. Install/enable the extension, reload.', 'err');
+    return;
+  }
+  try {
+    const res = await p.connect();
+    state.provider = p;
+    state.publicKey = res?.publicKey ?? p.publicKey;
+    state.conn = new Connection($('rpc').value.trim(), 'confirmed');
+    if (!state.publicKey) throw new Error('provider.connect() did not return a publicKey');
+    setStatus('Connected: ' + state.publicKey.toBase58(), 'ok');
+    $('connect').disabled = true;
+    $('disconnect').disabled = false;
+    $('signOnly').disabled = false;
+    $('signAndSend').disabled = false;
+    p.on?.('disconnect', onDisconnect);
+    p.on?.('accountChanged', pk => {
+      state.publicKey = pk;
+      setStatus('Account changed: ' + (pk?.toBase58?.() ?? 'disconnected'));
+      loadTokenAccounts().catch(() => {});
+    });
+    // Don't block on token-account fetch — RPCs often 403 public browser requests.
+    // User can still paste a token account pubkey manually.
+    loadTokenAccounts().catch(e => setStatus(
+      'Connected OK. Token-account auto-discovery failed (this is fine — paste the pubkey manually below, or set a custom RPC URL and click Reload). ' + (e?.message || e),
+      'err'
+    ));
+  } catch (e) {
+    setStatus('Connect failed: ' + (e?.message || e), 'err');
+  }
+}
+
+const RPC_CANDIDATES = [
+  'https://solana.drpc.org',
+  'https://api.metaplex.solana.com',
+  'https://solana-rpc.publicnode.com',
+  'https://solana.api.onfinality.io/public',
+  'https://rpc.ankr.com/solana',
+  'https://api.mainnet-beta.solana.com',
+];
+
+async function tryFetchTokenAccounts(url) {
+  const conn = new Connection(url, 'confirmed');
+  const [spl, t22] = await Promise.all([
+    conn.getParsedTokenAccountsByOwner(state.publicKey, { programId: TOKEN_PROGRAM_ID }),
+    conn.getParsedTokenAccountsByOwner(state.publicKey, { programId: TOKEN_2022_PROGRAM_ID }),
+  ]);
+  return { conn, spl, t22 };
+}
+
+async function loadTokenAccounts() {
+  if (!state.publicKey) return;
+  const primary = $('rpc').value.trim();
+  if (!primary) { setStatus('RPC URL is empty', 'err'); return; }
+
+  // Try the user's input first, then the preset fallbacks (deduped).
+  const order = [primary, ...RPC_CANDIDATES.filter(u => u !== primary)];
+  const failures = [];
+  for (const url of order) {
+    try {
+      setStatus('Loading token accounts from ' + url + ' …');
+      const { conn, spl, t22 } = await tryFetchTokenAccounts(url);
+      state.conn = conn;
+      $('rpc').value = url; // reflect the RPC that actually worked
+      const rows = [];
+      for (const { pubkey, account } of spl.value) rows.push(toRow(pubkey, account, 'spl'));
+      for (const { pubkey, account } of t22.value) rows.push(toRow(pubkey, account, 't22'));
+      rows.sort((a, b) => (b.uiAmount || 0) - (a.uiAmount || 0) || a.mint.localeCompare(b.mint));
+      state.tokenAccounts = rows;
+      populatePicker('owner-pick');
+      populatePicker('close-pick');
+      setStatus(`Loaded ${rows.length} token account(s) via ${url}`, 'ok');
+      return;
+    } catch (e) {
+      const msg = (e?.message || String(e)).split('\n')[0].slice(0, 140);
+      failures.push(`${url} → ${msg}`);
+      console.warn('[rpc]', url, 'failed:', e);
+    }
+  }
+  // All candidates failed — surface a detailed, actionable error.
+  console.group('Token-account RPC fallback — all candidates failed');
+  failures.forEach(f => console.log(f));
+  console.groupEnd();
+  throw new Error(
+    `All ${order.length} RPCs blocked this request. Use your own RPC URL (Helius free tier, Triton, QuickNode, Alchemy) ` +
+    `or paste the token account pubkey manually in the input below. See browser console for per-RPC errors.`
+  );
+}
+
+function toRow(pubkey, account, program) {
+  const info = account.data.parsed.info;
+  const amt = info.tokenAmount;
+  return {
+    pubkey: pubkey.toBase58(),
+    mint: info.mint,
+    owner: info.owner,
+    amount: amt.amount,
+    decimals: amt.decimals,
+    uiAmount: amt.uiAmount,
+    uiAmountString: amt.uiAmountString,
+    program, // 'spl' | 't22'
+  };
+}
+
+function short(s, n=6) { return s.slice(0, n) + '…' + s.slice(-4); }
+
+function populatePicker(id) {
+  const sel = $(id);
+  sel.innerHTML = '';
+  const blank = document.createElement('option');
+  blank.value = '';
+  blank.textContent = state.tokenAccounts.length ? '-- select a token account --' : '(no token accounts found)';
+  sel.appendChild(blank);
+  for (const r of state.tokenAccounts) {
+    const opt = document.createElement('option');
+    opt.value = r.pubkey;
+    opt.dataset.program = r.program;
+    opt.textContent = `${r.uiAmountString} · mint ${short(r.mint)} · ata ${short(r.pubkey)} · ${r.program === 't22' ? 'Token-2022' : 'SPL'}`;
+    sel.appendChild(opt);
+  }
+  sel.disabled = state.tokenAccounts.length === 0;
+}
+
+function onPick(prefix) {
+  const sel = $(`${prefix}-pick`);
+  const v = sel.value;
+  if (!v) return;
+  $(`${prefix}-tokenAccount`).value = v;
+  const program = sel.selectedOptions[0]?.dataset.program;
+  const programSelect = $(`${prefix}-program`);
+  programSelect.value = program === 't22'
+    ? 'TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb'
+    : 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA';
+}
+
+function onDisconnect() {
+  state.provider = null; state.publicKey = null;
+  setStatus('Disconnected');
+  $('connect').disabled = false; $('disconnect').disabled = true;
+  $('signOnly').disabled = true; $('signAndSend').disabled = true;
+}
+
+async function disconnect() {
+  try { await state.provider?.disconnect?.(); } catch {}
+  onDisconnect();
+}
+
+// Hand-built SetAuthority instruction — avoids pulling spl-token through CDN.
+// Layout: u8 op=6 | u8 authorityType | u8 COption flag=1 | 32B new_authority.
+function createSetAuthorityIx(tokenAccount, currentAuthority, authorityType, newAuthority, programId) {
+  const data = new Uint8Array(35);
+  data[0] = 6;               // SetAuthority discriminator
+  data[1] = authorityType;   // 2 = AccountOwner, 3 = CloseAccount
+  data[2] = 1;               // COption::Some
+  data.set(newAuthority.toBytes(), 3);
+  return new TransactionInstruction({
+    keys: [
+      { pubkey: tokenAccount,     isSigner: false, isWritable: true },
+      { pubkey: currentAuthority, isSigner: true,  isWritable: false },
+    ],
+    programId,
+    data,
+  });
+}
+
+async function fetchBlockhashWithFallback() {
+  const primary = $('rpc').value.trim();
+  const order = [primary, ...RPC_CANDIDATES.filter(u => u !== primary)].filter(Boolean);
+  const failures = [];
+  for (const url of order) {
+    try {
+      const conn = new Connection(url, 'confirmed');
+      const { blockhash } = await conn.getLatestBlockhash('confirmed');
+      state.conn = conn;
+      $('rpc').value = url;
+      return { blockhash, url };
+    } catch (e) {
+      const msg = (e?.message || String(e)).split('\n')[0].slice(0, 140);
+      failures.push(`${url} → ${msg}`);
+      console.warn('[rpc blockhash]', url, 'failed:', e);
+    }
+  }
+  console.group('getLatestBlockhash RPC fallback — all candidates failed');
+  failures.forEach(f => console.log(f));
+  console.groupEnd();
+  throw new Error(
+    `All ${order.length} RPCs blocked getLatestBlockhash. Paste a custom RPC URL (e.g. Helius free tier) and retry. See console for per-RPC errors.`
+  );
+}
+
+async function buildTx() {
+  if (!state.publicKey) throw new Error('wallet not connected');
+  const signer = state.publicKey;
+  const tx = new Transaction();
+  tx.feePayer = signer;
+
+  if (state.mode === 'owner' || state.mode === 'close') {
+    const prefix = state.mode;
+    const tokenAccount = new PublicKey($(`${prefix}-tokenAccount`).value.trim());
+    const newAuthority = new PublicKey($(`${prefix}-newAuthority`).value.trim());
+    const programId    = new PublicKey($(`${prefix}-program`).value);
+    const authorityType = state.mode === 'owner' ? 2 : 3;
+    tx.add(createSetAuthorityIx(tokenAccount, signer, authorityType, newAuthority, programId));
+  } else if (state.mode === 'assign') {
+    const newProgramId = new PublicKey($('assign-program').value.trim());
+    tx.add(SystemProgram.assign({ accountPubkey: signer, programId: newProgramId }));
+  }
+
+  const { blockhash, url } = await fetchBlockhashWithFallback();
+  tx.recentBlockhash = blockhash;
+  setStatus('Got blockhash via ' + url + '. Requesting wallet signature…');
+  return tx;
+}
+
+function b64(bytes) {
+  const u8 = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+  let s = '';
+  for (let i = 0; i < u8.length; i++) s += String.fromCharCode(u8[i]);
+  return btoa(s);
+}
+
+async function doSignOnly() {
+  try {
+    setStatus('Building transaction…');
+    const tx = await buildTx();
+    $('out-unsigned').textContent = b64(tx.serialize({ requireAllSignatures: false }));
+    setStatus('Requesting signature from wallet…');
+    const signed = await state.provider.signTransaction(tx);
+    $('out-signed').textContent = b64(signed.serialize({ requireAllSignatures: false }));
+    $('out-sig').textContent = '(not broadcast)';
+    setStatus('Signed. Wallet should have called parse-transaction during the prompt.', 'ok');
+  } catch (e) {
+    setStatus('Sign failed: ' + (e?.message || e), 'err');
+  }
+}
+
+async function doSignAndSend() {
+  if (state.mode === 'assign') {
+    const ok = confirm('⚠️ System Assign irreversibly changes the owner of your wallet account on mainnet. Really broadcast?');
+    if (!ok) return;
+  } else {
+    const ok = confirm('You are about to broadcast a SetAuthority transaction on mainnet — authority will actually change. Continue?');
+    if (!ok) return;
+  }
+  try {
+    setStatus('Building transaction…');
+    const tx = await buildTx();
+    $('out-unsigned').textContent = b64(tx.serialize({ requireAllSignatures: false }));
+    setStatus('Requesting signature + send from wallet…');
+    const res = await state.provider.signAndSendTransaction(tx);
+    const sig = typeof res === 'string' ? res : (res?.signature ?? JSON.stringify(res));
+    $('out-sig').textContent = sig;
+    setStatus('Broadcast. Signature: ' + sig, 'ok');
+  } catch (e) {
+    setStatus('Send failed: ' + (e?.message || e), 'err');
+  }
+}
+
+document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => {
+  document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
+  document.querySelectorAll('.panel').forEach(x => x.classList.remove('active'));
+  t.classList.add('active');
+  state.mode = t.dataset.mode;
+  $(`panel-${state.mode}`).classList.add('active');
+}));
+
+$('connect').addEventListener('click', connect);
+$('disconnect').addEventListener('click', disconnect);
+$('signOnly').addEventListener('click', doSignOnly);
+$('signAndSend').addEventListener('click', doSignAndSend);
+$('owner-pick').addEventListener('change', () => onPick('owner'));
+$('close-pick').addEventListener('change', () => onPick('close'));
+document.querySelectorAll('button.reload').forEach(b => {
+  b.addEventListener('click', () => loadTokenAccounts().catch(e => setStatus('Reload failed: ' + (e?.message || e), 'err')));
+});
+</script>
+</body>
+</html>
