@@ -203,7 +203,7 @@
         </label>
         <label>
           WalletConnect Project ID:
-          <input type="text" id="wc-project-id" placeholder="paste your reown/walletconnect projectId">
+          <input type="text" id="wc-project-id" placeholder="leave empty to use team default; paste your own to override">
         </label>
       </div>
     </section>
@@ -498,6 +498,11 @@
 import {
   Connection, PublicKey, Transaction, TransactionInstruction, SystemProgram, Keypair, ComputeBudgetProgram,
 } from 'https://esm.sh/@solana/web3.js@1.95.3?bundle';
+
+// Reown/WalletConnect Cloud project ID — team-shared, safe to hardcode:
+// WalletConnect projectIds are public client identifiers (like a GA tracking ID),
+// not secrets. Origin allowlist controls actual access in Reown Cloud.
+const WC_DEFAULT_PROJECT_ID = '545048d3f311c5e374cbf1de53a5f374';
 
 // WalletConnect is loaded lazily on first click so that Binance-Wallet-only users
 // aren't hit with the ~500 KB bundle.
@@ -850,12 +855,15 @@ async function connectBinance() {
 
 async function connectWalletConnect() {
   try {
-    const projectId = $('wc-project-id').value.trim() || localStorage.getItem('wcProjectId');
-    if (!projectId) {
-      setStatus('WalletConnect Project ID required (get one at https://cloud.reown.com).', 'err');
-      return;
+    // Priority: input box > saved localStorage > hardcoded team default.
+    const projectId = $('wc-project-id').value.trim()
+      || localStorage.getItem('wcProjectId')
+      || WC_DEFAULT_PROJECT_ID;
+    // Only persist a user-supplied override — leave localStorage clean if they
+    // fell back to the team default so future default-projectId rotations take.
+    if ($('wc-project-id').value.trim()) {
+      localStorage.setItem('wcProjectId', $('wc-project-id').value.trim());
     }
-    localStorage.setItem('wcProjectId', projectId);
     setStatus('Loading WalletConnect provider…');
 
     const UP = await loadUniversalProvider();
