@@ -2,242 +2,2628 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Solana Authority Change — Parse Transaction Test DApp</title>
+<title>Multi-Chain Simulation-Failure Signing Test</title>
 <style>
-  body { font-family: -apple-system, system-ui, sans-serif; max-width: 960px; margin: 20px auto; padding: 0 20px; color: #222; }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, system-ui, sans-serif; margin: 0; color: #222; background: #f7f7f8; }
   h1 { font-size: 1.4em; margin-bottom: 4px; }
-  .subtitle { color: #666; font-size: 0.85em; margin-bottom: 20px; }
+  .subtitle { color: #666; font-size: 0.85em; margin-bottom: 16px; }
   section { border: 1px solid #ddd; border-radius: 8px; padding: 16px; margin-bottom: 16px; background: #fff; }
   h2 { font-size: 1em; margin: 0 0 12px 0; }
   label { display: block; margin-bottom: 8px; font-size: 0.9em; }
   input[type=text], select { width: 100%; padding: 6px 8px; font-family: ui-monospace, Menlo, monospace; box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px; }
-  button { padding: 6px 14px; margin-right: 8px; cursor: pointer; border-radius: 4px; border: 1px solid #ccc; background: #f6f6f6; }
+  button { padding: 6px 14px; margin-right: 8px; cursor: pointer; border-radius: 4px; border: 1px solid #ccc; background: #f6f6f6; font-size: 0.9em; }
   button.primary { background: #f3ba2f; border: 1px solid #d4a017; font-weight: 600; }
   button:disabled { opacity: 0.45; cursor: not-allowed; }
-  pre { background: #f5f5f5; padding: 8px; border-radius: 4px; white-space: pre-wrap; word-break: break-all; font-size: 0.78em; max-height: 160px; overflow: auto; margin: 4px 0 8px; }
-  .status { padding: 8px 12px; border-radius: 4px; background: #eef; margin-bottom: 12px; font-size: 0.9em; }
+  pre { background: #f5f5f5; padding: 8px; border-radius: 4px; white-space: pre-wrap; word-break: break-all; font-size: 0.75em; max-height: 140px; overflow: auto; margin: 4px 0 8px; }
+  .status { padding: 8px 12px; border-radius: 4px; background: #eef; margin-bottom: 12px; font-size: 0.9em; word-break: break-word; }
   .err { background: #fee; color: #a00; }
   .ok  { background: #efe; color: #070; }
   .warn { background: #fffbe0; color: #855; font-size: 0.85em; padding: 8px 12px; border-radius: 4px; margin-bottom: 10px; border: 1px solid #f0dc8a; }
+
+  /* -- App layout with sidebar ------------------------------------------ */
+  .app { display: flex; min-height: 100vh; }
+  .sidebar {
+    width: 220px; flex-shrink: 0; background: #1f2333; color: #d3d5df; padding: 20px 0;
+    position: sticky; top: 0; height: 100vh; overflow-y: auto;
+  }
+  .sidebar .brand { padding: 0 20px 16px; font-weight: 700; font-size: 0.95em; border-bottom: 1px solid #2c3145; margin-bottom: 12px; }
+  .sidebar .brand small { display: block; color: #8b90a6; font-weight: 400; font-size: 0.75em; margin-top: 2px; }
+  .sidebar nav { display: flex; flex-direction: column; }
+  .nav-item {
+    display: block; width: 100%; padding: 10px 20px; text-align: left; background: transparent;
+    border: none; color: #d3d5df; cursor: pointer; font-size: 0.9em; margin: 0; border-radius: 0;
+    border-left: 3px solid transparent;
+  }
+  .nav-item:hover { background: #2c3145; }
+  .nav-item.active { background: #2c3145; border-left-color: #f3ba2f; color: #fff; font-weight: 600; }
+  .nav-item .nav-count { float: right; color: #8b90a6; font-weight: 400; font-size: 0.85em; }
+
+  .main { flex-grow: 1; max-width: 1200px; padding: 20px 24px; }
+  .page { display: none; }
+  .page.active { display: block; }
+
+  .toolbar { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
+  .toolbar label { display: inline-flex; align-items: center; gap: 6px; margin: 0; }
+  .toolbar input[type=text] { width: 320px; }
+
+  .chain-status-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 8px; }
+  .chain-status { border: 1px solid #eee; border-radius: 6px; padding: 8px 10px; font-size: 0.85em; background: #fafafa; }
+  .chain-status .chain-name { font-weight: 600; margin-bottom: 4px; }
+  .chain-status .chain-addr { font-family: ui-monospace, Menlo, monospace; font-size: 0.85em; color: #444; word-break: break-all; }
+  .chain-status .chain-bal { color: #666; margin-top: 2px; }
+  .chain-status .chain-net { color: #888; font-size: 0.8em; }
+
+  .card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 12px; }
+  .card { border: 1px solid #e2e2e2; border-radius: 8px; padding: 12px; background: #fff; display: flex; flex-direction: column; }
+  .card-header { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+  .chain-badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 0.75em; font-weight: 600; color: #fff; }
+  .chain-badge.bsc  { background: #f0b90b; color: #000; }
+  .chain-badge.eth  { background: #627eea; }
+  .chain-badge.base { background: #0052ff; }
+  .chain-badge.sol  { background: #14f195; color: #000; }
+  .chain-badge.tron { background: #ff060a; }
+  .failure-type { font-size: 0.85em; color: #a00; font-weight: 600; }
+  .card-desc { font-size: 0.82em; color: #555; margin-bottom: 10px; flex-grow: 1; }
+  .card-status { font-size: 0.78em; margin-top: 6px; padding: 6px 8px; border-radius: 4px; background: #f5f5f5; color: #444; min-height: 1.4em; word-break: break-word; }
+  .card-status.ok  { background: #efe; color: #070; }
+  .card-status.err { background: #fee; color: #a00; }
+
+  /* -- Legacy Solana page tabs ------------------------------------------ */
   .tabs { display: flex; gap: 4px; margin-bottom: 12px; border-bottom: 1px solid #ddd; }
   .tab { padding: 8px 14px; cursor: pointer; border: 1px solid transparent; border-bottom: none; border-radius: 4px 4px 0 0; font-size: 0.9em; }
   .tab.active { border-color: #ddd; background: #fff; margin-bottom: -1px; font-weight: 600; }
   .panel { display: none; }
   .panel.active { display: block; }
   small.hint { display: block; color: #666; margin-top: -4px; margin-bottom: 8px; font-size: 0.8em; }
+
+  .out-panel pre { max-height: 100px; }
+
+  /* -- EVM Interactions / Message Signing extra ------------------------- */
+  .card-params label { font-size: 0.8em; margin-bottom: 4px; }
+  .card-params input, .card-params select, .card-params textarea {
+    padding: 4px 6px; font-size: 0.82em;
+  }
+  .card-params textarea {
+    width: 100%; box-sizing: border-box; font-family: ui-monospace, Menlo, monospace;
+    border: 1px solid #ccc; border-radius: 4px; resize: vertical; min-height: 60px;
+  }
+  .card-actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px; }
+  .card-actions button { margin-right: 0; }
+
+  /* -- Add Custom Chain page -------------------------------------------- */
+  .preset-group { margin-top: 14px; }
+  .preset-group:first-child { margin-top: 4px; }
+  .preset-group-label {
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+    font-size: 0.78em; font-weight: 600; color: #555;
+    text-transform: uppercase; letter-spacing: 0.3px; margin-bottom: 8px;
+  }
+  .preset-group-label .dot { width: 8px; height: 8px; border-radius: 50%; }
+  .preset-group.working .dot { background: #2e7d32; }
+  .preset-group.blocked .dot { background: #ef6c00; }
+  .preset-group.dead .dot    { background: #c62828; }
+  .preset-group-desc { font-size: 0.75em; color: #888; font-weight: 400; text-transform: none; letter-spacing: 0; }
+  .preset-chips { display: flex; gap: 6px; flex-wrap: wrap; }
+  .chip {
+    padding: 6px 12px; background: #f0f0f0; border-radius: 16px; font-size: 0.78em;
+    cursor: pointer; border: 1px solid transparent; line-height: 1.4;
+  }
+  .chip:hover { background: #e0e0e0; }
+  .chip.working { background: #e8f5e9; color: #2e7d32; }
+  .chip.working:hover { background: #d4ecd6; }
+  .chip.blocked { background: #fff3e0; color: #e65100; }
+  .chip.blocked:hover { background: #ffe5c2; }
+  .chip.dead    { background: #ffebee; color: #c62828; }
+  .chip.dead:hover    { background: #fcdada; }
+  .chip .chip-meta { font-size: 0.72em; opacity: 0.7; margin-left: 4px; }
+  .chain-log {
+    background: #1e1e1e; color: #d4d4d4; padding: 12px; border-radius: 8px;
+    font-family: ui-monospace, Menlo, monospace; font-size: 0.75em;
+    max-height: 260px; overflow-y: auto; white-space: pre-wrap; word-break: break-word;
+  }
+  .chain-log .info { color: #4fc3f7; }
+  .chain-log .ok   { color: #81c784; }
+  .chain-log .err  { color: #ff8a80; }
+  .usage-table { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 0.8em; }
+  .usage-table th, .usage-table td { padding: 8px 10px; text-align: left; border-bottom: 1px solid #eee; vertical-align: top; }
+  .usage-table th { background: #fafafa; color: #555; font-weight: 600; font-size: 0.75em; text-transform: uppercase; letter-spacing: 0.3px; }
+  .usage-table tr:last-child td { border-bottom: none; }
+  .usage-table code { background: #f5f5f5; padding: 1px 6px; border-radius: 4px; font-family: ui-monospace, Menlo, monospace; font-size: 0.9em; }
+  .usage-table .recommended { background: #fffbeb; }
+  .badge-inline { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 0.72em; font-weight: 600; }
+  .badge-inline.recommended { background: #f0b90b; color: #000; }
+  .badge-inline.compare     { background: #e0e0e0; color: #555; }
+  .form-row { margin: 10px 0; }
+  .form-row label { display: block; font-size: 0.85em; color: #555; margin-bottom: 4px; font-weight: 500; }
+  .form-row .hint { font-size: 0.75em; color: #888; margin-top: 4px; }
 </style>
 </head>
 <body>
 
-<h1>Solana Authority Change — Parse Transaction Test DApp</h1>
-<div class="subtitle">Triggers Binance wallet's <code>parse-transaction</code> API (PR 773) for Solana authority changes. Mainnet-beta.</div>
-
-<div class="warn">
-  <strong>Mainnet warning.</strong> This page builds <em>real</em> SetAuthority / Assign transactions on Solana mainnet-beta.
-  Use <b>Sign only</b> first — it is enough to trigger <code>parse-transaction</code> inside the wallet's signing prompt, without touching on-chain state. <b>Sign &amp; Send</b> will permanently change authorities.
-</div>
-
-<section id="wallet">
-  <h2>1. Connect Wallet</h2>
-  <div id="status" class="status">Not connected</div>
-  <button id="connect" class="primary">Connect Binance Wallet</button>
-  <button id="disconnect" disabled>Disconnect</button>
-  <label style="margin-top:12px">
-    RPC URL (used for auto-discovery of your token accounts; <b>not required</b> — you can paste token account pubkey manually below):
-    <input type="text" id="rpc" value="https://solana.drpc.org">
-    <small class="hint">Auto-fallback: drpc → metaplex → publicnode → onfinality → ankr → official. If all block you, use a private RPC (Helius free tier gives 100k req/day: <code>https://mainnet.helius-rpc.com/?api-key=YOUR_KEY</code>).</small>
-  </label>
-</section>
-
-<section id="tx">
-  <h2>2. Build &amp; Sign Transaction</h2>
-  <div class="tabs">
-    <div class="tab active" data-mode="owner">SetAuthority · AccountOwner</div>
-    <div class="tab" data-mode="close">SetAuthority · CloseAccount</div>
-    <div class="tab" data-mode="assign">System Assign</div>
-  </div>
-
-  <div class="panel active" id="panel-owner">
-    <small class="hint">PR 773 expects <code>type=token_account_owner</code>. Signer must currently own the token account.</small>
-    <label>Pick from my token accounts:
-      <select id="owner-pick" disabled><option>(connect wallet first)</option></select>
-    </label>
-    <button type="button" class="reload" data-target="owner">Reload accounts</button>
-    <label style="margin-top:8px">SPL Token Account pubkey:
-      <input type="text" id="owner-tokenAccount" value="BRDdkLdhWgokZYa2afnt6uyy6P2MCKgHNpH9h7tW8S8t" placeholder="pasted or auto-filled from dropdown">
-    </label>
-    <label>New Owner (target authority):
-      <input type="text" id="owner-newAuthority" value="3pqbsXSYbePK58AMZu52tKj1rLNX3mWPSvV1xDDaTtjx" placeholder="new owner pubkey">
-    </label>
-    <label>Token Program:
-      <select id="owner-program">
-        <option value="TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA">SPL Token (legacy)</option>
-        <option value="TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb">Token-2022</option>
-      </select>
-    </label>
-  </div>
-
-  <div class="panel" id="panel-close">
-    <small class="hint">PR 773 expects <code>type=token_close</code>. Changes the CloseAccount authority of a token account.</small>
-    <label>Pick from my token accounts:
-      <select id="close-pick" disabled><option>(connect wallet first)</option></select>
-    </label>
-    <button type="button" class="reload" data-target="close">Reload accounts</button>
-    <label style="margin-top:8px">SPL Token Account pubkey:
-      <input type="text" id="close-tokenAccount" value="BRDdkLdhWgokZYa2afnt6uyy6P2MCKgHNpH9h7tW8S8t" placeholder="pasted or auto-filled from dropdown">
-    </label>
-    <label>New Close Authority (target):
-      <input type="text" id="close-newAuthority" value="3pqbsXSYbePK58AMZu52tKj1rLNX3mWPSvV1xDDaTtjx" placeholder="new close authority pubkey">
-    </label>
-    <label>Token Program:
-      <select id="close-program">
-        <option value="TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA">SPL Token (legacy)</option>
-        <option value="TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb">Token-2022</option>
-      </select>
-    </label>
-  </div>
-
-  <div class="panel" id="panel-assign">
-    <div class="warn" style="margin-top:0">
-      ⚠️ <b>Irreversible on mainnet.</b> <code>SystemProgram.assign</code> transfers the connected wallet account's owner program away from System Program. After broadcast, that wallet can no longer sign via System Program and will lose its SOL. Strongly prefer <b>Sign only</b>.
+<div class="app">
+  <aside class="sidebar">
+    <div class="brand">
+      Web3 Sign Test
+      <small>QA · parse-transaction / simulation</small>
     </div>
-    <small class="hint">PR 773 expects <code>type=account_owner</code>. The signer <em>is</em> the account being reassigned.</small>
-    <label>Target Program (new owner program):
-      <input type="text" id="assign-program" value="3pqbsXSYbePK58AMZu52tKj1rLNX3mWPSvV1xDDaTtjx" placeholder="e.g. TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA">
-    </label>
-  </div>
+    <nav>
+      <button class="nav-item active" data-page="sim">
+        Simulation Failures <span class="nav-count">11</span>
+      </button>
+      <button class="nav-item" data-page="evm-tx">
+        EVM Interactions <span class="nav-count">31</span>
+      </button>
+      <button class="nav-item" data-page="evm-msg">
+        EVM Message Signing <span class="nav-count">6</span>
+      </button>
+      <button class="nav-item" data-page="add-chain">
+        Add Custom Chain <span class="nav-count">16</span>
+      </button>
+      <button class="nav-item" data-page="legacy">
+        Solana Authority Changes <span class="nav-count">3</span>
+      </button>
+    </nav>
+  </aside>
 
-  <div style="margin-top: 16px;">
-    <button id="signOnly" class="primary" disabled>Sign only</button>
-    <button id="signAndSend" disabled>Sign &amp; Send</button>
-  </div>
-</section>
+  <main class="main">
 
-<section id="output">
-  <h2>3. Result</h2>
-  <label>Unsigned Tx (base64):
-    <pre id="out-unsigned">(none)</pre>
-  </label>
-  <label>Signed Tx (base64):
-    <pre id="out-signed">(none)</pre>
-  </label>
-  <label>Broadcast signature:
-    <pre id="out-sig">(none)</pre>
-  </label>
-</section>
+    <h1>Multi-Chain Wallet Signing Test</h1>
+    <div class="subtitle">
+      QA tool for wallet parse-transaction / signing UI. Four test suites in the sidebar:
+      <b>Simulation Failures</b> (5 chains), <b>EVM Interactions</b> (ERC20/721/1155/EIP-747),
+      <b>EVM Message Signing</b> (eth_sign / personal_sign / typed data / permit), and
+      <b>Solana Authority Changes</b> (legacy, targets <code>parse-transaction</code>'s <code>authorityChanges</code>).
+    </div>
+
+    <div class="warn">
+      <strong>Testnet by default.</strong> Toolbar switches between testnet and mainnet.
+      EVM cases use <code>eth_sendTransaction</code> (the standard browser-wallet entrypoint) — the wallet runs its
+      simulation <em>before</em> the prompt appears. Just <b>cancel in the wallet prompt</b> after inspecting the
+      simulation error. Solana / TRON cases use pure sign-only APIs. On the <b>Authority Changes</b> page,
+      "Sign &amp; Send" is a real broadcast — prefer "Sign only".
+    </div>
+
+    <section id="wallet">
+      <h2>Connect Wallet</h2>
+      <div id="status" class="status">Not connected</div>
+      <div class="toolbar">
+        <button id="connect-binance" class="primary">Connect Binance Wallet</button>
+        <button id="connect-wc">Connect WalletConnect</button>
+        <button id="disconnect" disabled>Disconnect</button>
+        <button id="diagnose">Diagnose</button>
+      </div>
+      <div class="toolbar">
+        <label>
+          Network:
+          <select id="network">
+            <option value="testnet">Testnet</option>
+            <option value="mainnet" selected>Mainnet</option>
+          </select>
+        </label>
+        <label>
+          WalletConnect Project ID:
+          <input type="text" id="wc-project-id" placeholder="paste your reown/walletconnect projectId">
+        </label>
+      </div>
+    </section>
+
+    <section id="chains">
+      <h2>Chain Status</h2>
+      <div class="chain-status-grid" id="chain-status-grid">
+        <!-- populated at runtime -->
+      </div>
+    </section>
+
+    <!-- ============ Page: Simulation Failures ============ -->
+    <div id="page-sim" class="page active">
+      <section id="cases">
+        <h2>Simulation-Failure Scenarios</h2>
+        <div class="card-grid" id="card-grid">
+          <!-- populated at runtime from CASES -->
+        </div>
+      </section>
+    </div>
+
+    <!-- ============ Page: Solana Authority Changes (Legacy) ============ -->
+    <div id="page-legacy" class="page">
+      <section id="legacy">
+        <h2>Solana Authority Changes</h2>
+        <p class="subtitle" style="margin: 0 0 12px 0">
+          Original PR 773 test scenarios. Triggers Binance Wallet's <code>parse-transaction</code> API to inspect
+          the <code>authorityChanges</code> field for SPL Token <code>SetAuthority</code> and System <code>Assign</code>.
+        </p>
+
+        <div class="tabs" id="legacy-tabs">
+          <div class="tab active" data-mode="owner">SetAuthority · AccountOwner</div>
+          <div class="tab" data-mode="close">SetAuthority · CloseAccount</div>
+          <div class="tab" data-mode="assign">System Assign</div>
+        </div>
+
+        <div class="panel active" id="panel-owner">
+          <small class="hint">PR 773 expects <code>type=token_account_owner</code>. Signer must currently own the token account.</small>
+          <label>Pick from my token accounts:
+            <select id="owner-pick" disabled><option>(connect wallet first)</option></select>
+          </label>
+          <button type="button" class="reload" data-target="owner">Reload accounts</button>
+          <label style="margin-top:8px">SPL Token Account pubkey:
+            <input type="text" id="owner-tokenAccount" placeholder="pasted or auto-filled from dropdown">
+          </label>
+          <label>New Owner (target authority):
+            <input type="text" id="owner-newAuthority" value="3pqbsXSYbePK58AMZu52tKj1rLNX3mWPSvV1xDDaTtjx" placeholder="new owner pubkey">
+          </label>
+          <label>Token Program:
+            <select id="owner-program">
+              <option value="TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA">SPL Token (legacy)</option>
+              <option value="TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb">Token-2022</option>
+            </select>
+          </label>
+        </div>
+
+        <div class="panel" id="panel-close">
+          <small class="hint">PR 773 expects <code>type=token_close</code>. Changes the CloseAccount authority.</small>
+          <label>Pick from my token accounts:
+            <select id="close-pick" disabled><option>(connect wallet first)</option></select>
+          </label>
+          <button type="button" class="reload" data-target="close">Reload accounts</button>
+          <label style="margin-top:8px">SPL Token Account pubkey:
+            <input type="text" id="close-tokenAccount" placeholder="pasted or auto-filled from dropdown">
+          </label>
+          <label>New Close Authority (target):
+            <input type="text" id="close-newAuthority" value="3pqbsXSYbePK58AMZu52tKj1rLNX3mWPSvV1xDDaTtjx" placeholder="new close authority pubkey">
+          </label>
+          <label>Token Program:
+            <select id="close-program">
+              <option value="TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA">SPL Token (legacy)</option>
+              <option value="TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb">Token-2022</option>
+            </select>
+          </label>
+        </div>
+
+        <div class="panel" id="panel-assign">
+          <div class="warn" style="margin-top:0">
+            ⚠️ <b>Irreversible on mainnet.</b> <code>SystemProgram.assign</code> transfers the connected wallet account's owner program away from System Program. After broadcast, that wallet can no longer sign via System Program and will lose its SOL. Strongly prefer <b>Sign only</b>.
+          </div>
+          <small class="hint">PR 773 expects <code>type=account_owner</code>. The signer <em>is</em> the account being reassigned.</small>
+          <label>Target Program (new owner program):
+            <input type="text" id="assign-program" value="3pqbsXSYbePK58AMZu52tKj1rLNX3mWPSvV1xDDaTtjx" placeholder="e.g. TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA">
+          </label>
+        </div>
+
+        <div style="margin-top: 16px;">
+          <button id="legacy-signOnly" class="primary" disabled>Sign only</button>
+          <button id="legacy-signAndSend" disabled>Sign &amp; Send</button>
+        </div>
+      </section>
+    </div>
+
+    <!-- ============ Page: EVM Interactions ============ -->
+    <div id="page-evm-tx" class="page">
+      <section id="evm-tx">
+        <h2>EVM Interactions</h2>
+        <p class="subtitle" style="margin: 0 0 12px 0">
+          ERC20 / ERC721 / ERC1155 / EIP-747 flows adapted from
+          <a href="https://metamask.github.io/test-dapp/" target="_blank" rel="noreferrer">MetaMask test-dapp</a>.
+          Each card lets you Preview the constructed tx (no wallet call) or Sign &amp; Send
+          (<code>eth_sendTransaction</code> — <b>cancel in the wallet prompt</b> if you don't want to broadcast).
+        </p>
+        <div class="tabs" id="evm-tx-tabs">
+          <div class="tab active" data-group="erc20">ERC20</div>
+          <div class="tab" data-group="erc721">ERC721</div>
+          <div class="tab" data-group="erc1155">ERC1155</div>
+          <div class="tab" data-group="erc6909">ERC6909</div>
+          <div class="tab" data-group="eip747">EIP-747</div>
+        </div>
+        <div class="panel active" id="evm-tx-panel-erc20"><div class="card-grid"></div></div>
+        <div class="panel"        id="evm-tx-panel-erc721"><div class="card-grid"></div></div>
+        <div class="panel"        id="evm-tx-panel-erc1155"><div class="card-grid"></div></div>
+        <div class="panel"        id="evm-tx-panel-erc6909"><div class="card-grid"></div></div>
+        <div class="panel"        id="evm-tx-panel-eip747"><div class="card-grid"></div></div>
+      </section>
+    </div>
+
+    <!-- ============ Page: EVM Message Signing ============ -->
+    <div id="page-evm-msg" class="page">
+      <section id="evm-msg">
+        <h2>EVM Message Signing</h2>
+        <p class="subtitle" style="margin: 0 0 12px 0">
+          Six standard EVM message signing methods. Payload is editable per card; signed hex is written to the shared
+          Result panel below. No recovery/verification is performed here — copy the signature to
+          <a href="https://etherscan.io/verifiedSignatures" target="_blank" rel="noreferrer">etherscan verifiedSignatures</a>
+          or your own tool.
+        </p>
+        <div class="card-grid" id="evm-msg-grid"></div>
+      </section>
+    </div>
+
+    <!-- ============ Page: Add Custom Chain ============ -->
+    <div id="page-add-chain" class="page">
+      <section id="add-chain">
+        <h2>Add Custom Chain</h2>
+        <p class="subtitle" style="margin: 0 0 12px 0">
+          Test <code>wallet_addEthereumChain</code> / <code>wallet_switchEthereumChain</code> flows for Binance Wallet's
+          ChainList Quick Add (W3W-45527). Uses the connected wallet from the top wallet section.
+        </p>
+
+        <div style="margin-bottom: 12px">
+          <h3 style="font-size: 0.95em; margin: 0 0 6px">1. Pick a preset (optional)</h3>
+          <p style="font-size: 0.82em; color: #666; margin: 0 0 4px;">
+            Click a chip to autofill the form. RPC reachability verified manually — see the three groups.
+          </p>
+
+          <div class="preset-group working">
+            <div class="preset-group-label">
+              <span class="dot"></span>
+              <span>Working RPC</span>
+              <span class="preset-group-desc">— RPC responds to <code>eth_chainId</code>; usable for save + sign + send tests</span>
+            </div>
+            <div class="preset-chips" id="presets-working"></div>
+          </div>
+
+          <div class="preset-group blocked">
+            <div class="preset-group-label">
+              <span class="dot"></span>
+              <span>Privacy-blocked Chain</span>
+              <span class="preset-group-desc">— chainId ONLY in <code>privacyIssueNetworks[]</code>; wallet should refuse to save (PRD §3.1)</span>
+            </div>
+            <div class="preset-chips" id="presets-blocked"></div>
+          </div>
+
+          <div class="preset-group dead">
+            <div class="preset-group-label">
+              <span class="dot"></span>
+              <span>Dead RPC</span>
+              <span class="preset-group-desc">— RPC does not respond / requires API key; test wallet "RPC Unavailable" UX</span>
+            </div>
+            <div class="preset-chips" id="presets-dead"></div>
+          </div>
+        </div>
+
+        <div style="margin-bottom: 12px">
+          <h3 style="font-size: 0.95em; margin: 12px 0 6px">2. Chain info</h3>
+          <div class="form-row">
+            <label for="chainId">Chain ID (decimal)</label>
+            <input id="chainId" type="text" placeholder="e.g. 998">
+            <div class="hint">Will be converted to hex (0x…) before sending to wallet.</div>
+          </div>
+          <div class="form-row">
+            <label for="chainName">Chain Name</label>
+            <input id="chainName" type="text" placeholder="e.g. Hyperliquid Testnet">
+          </div>
+          <div class="form-row">
+            <label for="rpcUrl">RPC URL</label>
+            <input id="rpcUrl" type="text" placeholder="https://…">
+            <div class="hint">Try Alchemy / Infura / Tenderly URLs to test privacy blocking.</div>
+          </div>
+          <div class="form-row">
+            <label for="symbol">Native Currency Symbol</label>
+            <input id="symbol" type="text" placeholder="e.g. HYPE">
+          </div>
+          <div class="form-row">
+            <label for="decimals">Decimals</label>
+            <input id="decimals" type="text" value="18">
+          </div>
+          <div class="form-row">
+            <label for="explorer">Block Explorer (optional)</label>
+            <input id="explorer" type="text" placeholder="https://…">
+          </div>
+        </div>
+
+        <div style="margin-bottom: 12px">
+          <h3 style="font-size: 0.95em; margin: 12px 0 6px">3. Trigger</h3>
+          <div class="toolbar">
+            <button id="ac-addChainBtn" class="primary">wallet_addEthereumChain</button>
+            <button id="ac-switchOrAddBtn" class="primary">switch → fallback add</button>
+            <button id="ac-switchChainBtn">wallet_switchEthereumChain only</button>
+            <button id="ac-getChainBtn">eth_chainId</button>
+          </div>
+          <table class="usage-table">
+            <thead>
+              <tr>
+                <th style="width: 30%">Button</th>
+                <th style="width: 30%">Behavior</th>
+                <th>What it tests</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code>wallet_addEthereumChain</code></td>
+                <td>Sends full chain info directly</td>
+                <td>Wallet's EIP-3085 add-network form auto-fill</td>
+              </tr>
+              <tr class="recommended">
+                <td>
+                  <code>switch → fallback add</code>
+                  <br><span class="badge-inline recommended">Recommended</span>
+                </td>
+                <td>Tries switch first; on error <code>4902</code>, falls back to add with full info</td>
+                <td>Production dApp pattern (EIP-3326 standard)</td>
+              </tr>
+              <tr>
+                <td>
+                  <code>wallet_switchEthereumChain only</code>
+                  <br><span class="badge-inline compare">Compare</span>
+                </td>
+                <td>Pure switch with chainId only, no fallback</td>
+                <td>Wallet's own ChainList Quick Add trigger on unknown chainId</td>
+              </tr>
+              <tr>
+                <td><code>eth_chainId</code></td>
+                <td>Reads currently selected chain</td>
+                <td>Verify chain switch took effect</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div style="margin-bottom: 12px">
+          <h3 style="font-size: 0.95em; margin: 12px 0 6px">4. Session probe</h3>
+          <p style="font-size: 0.82em; color: #666; margin: 0 0 8px;">
+            Test whether the wallet still considers this dApp connected.
+          </p>
+          <div class="toolbar">
+            <button id="ac-probeBtn">Probe (eth_accounts)</button>
+            <button id="ac-autoProbeBtn">Auto-probe every 30s (start)</button>
+            <button id="ac-forceReloadBtn">Reload page</button>
+          </div>
+        </div>
+
+        <div>
+          <h3 style="font-size: 0.95em; margin: 12px 0 6px">5. Log</h3>
+          <div id="ac-log" class="chain-log">Waiting for actions…\n</div>
+          <div class="toolbar" style="margin-top: 8px">
+            <button id="ac-clearLogBtn">Clear log</button>
+          </div>
+        </div>
+
+      </section>
+    </div>
+
+    <!-- ============ Shared output panel ============ -->
+    <section id="output" class="out-panel">
+      <h2>Last Result</h2>
+      <label>Case: <span id="out-case">(none)</span></label>
+      <label>Unsigned Tx (payload preview):
+        <pre id="out-unsigned">(none)</pre>
+      </label>
+      <label>Signature / error response:
+        <pre id="out-signed">(none)</pre>
+      </label>
+    </section>
+
+  </main>
+</div>
 
 <script type="module">
 import {
-  Connection, PublicKey, Transaction, TransactionInstruction, SystemProgram,
+  Connection, PublicKey, Transaction, TransactionInstruction, SystemProgram, Keypair, ComputeBudgetProgram,
 } from 'https://esm.sh/@solana/web3.js@1.95.3?bundle';
 
-const TOKEN_PROGRAM_ID    = new PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA');
-const TOKEN_2022_PROGRAM_ID = new PublicKey('TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb');
+// WalletConnect is loaded lazily on first click so that Binance-Wallet-only users
+// aren't hit with the ~500 KB bundle.
+let UniversalProvider = null;
+async function loadUniversalProvider() {
+  if (UniversalProvider) return UniversalProvider;
+  const mod = await import('https://esm.sh/@walletconnect/universal-provider@2.17.0?bundle');
+  UniversalProvider = mod.default || mod.UniversalProvider || mod;
+  return UniversalProvider;
+}
+
+// ---------- Chain configuration ----------------------------------------------
+
+const CHAINS = {
+  bsc: {
+    label: 'BSC',
+    testnet: {
+      chainId: '0x61', chainIdDec: 97, name: 'BSC Testnet',
+      rpcs: [
+        'https://data-seed-prebsc-1-s1.binance.org:8545',
+        'https://bsc-testnet.publicnode.com',
+        'https://bsc-testnet-rpc.publicnode.com',
+      ],
+      revertContract: '0x337610d27c682E347C9cD60BD4b3b107C9d34dDd',
+      faucet: 'https://testnet.bnbchain.org/faucet-smart',
+    },
+    mainnet: {
+      chainId: '0x38', chainIdDec: 56, name: 'BSC Mainnet',
+      rpcs: [
+        'https://bsc-dataseed.binance.org',
+        'https://bsc.publicnode.com',
+        'https://binance.llamarpc.com',
+      ],
+      revertContract: '0x55d398326f99059fF775485246999027B3197955',
+      faucet: null,
+      tokens: {
+        erc20:   '0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d', // USDC-BSC
+        erc721:  '0x0000000000000000000000000000000000000000', // QA fills in
+        erc1155: '0x0000000000000000000000000000000000000000',
+        erc6909: '0x0000000000000000000000000000000000000000', // QA fills in (ecosystem is new)
+        spender: '0x000000000022D473030F116dDEE9F6B43aC78BA3', // Uniswap Permit2 (universal)
+      },
+    },
+  },
+  eth: {
+    label: 'ETH',
+    testnet: {
+      chainId: '0xaa36a7', chainIdDec: 11155111, name: 'Sepolia',
+      rpcs: [
+        'https://ethereum-sepolia-rpc.publicnode.com',
+        'https://rpc.sepolia.org',
+        'https://sepolia.drpc.org',
+      ],
+      revertContract: '0x68194a729C2450ad26072b3D33ADaCbcef39D574',
+      faucet: 'https://sepoliafaucet.com',
+    },
+    mainnet: {
+      chainId: '0x1', chainIdDec: 1, name: 'Ethereum',
+      rpcs: [
+        'https://ethereum.publicnode.com',
+        'https://cloudflare-eth.com',
+        'https://eth.llamarpc.com',
+      ],
+      revertContract: '0xdAC17F958D2ee523a2206206994597C13D831ec7',
+      faucet: null,
+      tokens: {
+        erc20:   '0xdAC17F958D2ee523a2206206994597C13D831ec7', // USDT-ETH
+        erc721:  '0xBC4CA0EdA7647A8aB7C2061c2E118A18a936f13D', // BAYC
+        erc1155: '0x495f947276749Ce646f68AC8c248420045cb7b5e', // OpenSea Shared Storefront
+        erc6909: '0x0000000000000000000000000000000000000000', // QA fills in (ecosystem is new)
+        spender: '0x000000000022D473030F116dDEE9F6B43aC78BA3', // Uniswap Permit2
+      },
+    },
+  },
+  base: {
+    label: 'BASE',
+    testnet: {
+      chainId: '0x14a34', chainIdDec: 84532, name: 'Base Sepolia',
+      rpcs: [
+        'https://sepolia.base.org',
+        'https://base-sepolia-rpc.publicnode.com',
+        'https://base-sepolia.drpc.org',
+      ],
+      revertContract: '0x036CbD53842c5426634e7929541eC2318f3dCF7e',
+      faucet: 'https://www.alchemy.com/faucets/base-sepolia',
+    },
+    mainnet: {
+      chainId: '0x2105', chainIdDec: 8453, name: 'Base',
+      rpcs: [
+        'https://mainnet.base.org',
+        'https://base.publicnode.com',
+        'https://base.llamarpc.com',
+      ],
+      revertContract: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
+      faucet: null,
+      tokens: {
+        erc20:   '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913', // USDC-Base
+        erc721:  '0x0000000000000000000000000000000000000000',
+        erc1155: '0x0000000000000000000000000000000000000000',
+        erc6909: '0x0000000000000000000000000000000000000000', // QA fills in (ecosystem is new)
+        spender: '0x000000000022D473030F116dDEE9F6B43aC78BA3',
+      },
+    },
+  },
+  sol: {
+    label: 'SOL',
+    testnet: {
+      chainId: 'EtWTRABZaYq6iMfeYKouRu166VU2xqa1',
+      name: 'Solana Devnet',
+      rpcs: [
+        'https://api.devnet.solana.com',
+        'https://devnet.helius-rpc.com',
+        'https://solana-devnet.drpc.org',
+      ],
+      faucet: 'https://faucet.solana.com',
+    },
+    mainnet: {
+      chainId: '5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp',
+      name: 'Solana Mainnet',
+      rpcs: [
+        'https://solana.drpc.org',
+        'https://solana-rpc.publicnode.com',
+        'https://api.mainnet-beta.solana.com',
+      ],
+      faucet: null,
+    },
+  },
+  tron: {
+    label: 'TRON',
+    testnet: {
+      chainId: '0xcd8690dc', name: 'Shasta Testnet',
+      httpApi: 'https://api.shasta.trongrid.io',
+      revertContract: 'TG3XXyExBkPp9nzdajDZsozEu4BkaSJozs',
+      faucet: 'https://shasta.tronex.io/',
+    },
+    mainnet: {
+      chainId: '0x2b6653dc', name: 'Tron Mainnet',
+      httpApi: 'https://api.trongrid.io',
+      revertContract: 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t',
+      faucet: null,
+    },
+  },
+};
+
+// Solana SPL token program IDs (used by the legacy Authority Change page).
+const TOKEN_PROGRAM_ID       = new PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA');
+const TOKEN_2022_PROGRAM_ID  = new PublicKey('TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb');
 
 const state = {
-  provider: null,
-  publicKey: null,
-  conn: null,
-  mode: 'owner',
-  tokenAccounts: [], // [{pubkey, mint, amount, decimals, uiAmount, program}]
+  network: 'mainnet',
+  connectionType: null,                              // 'binance' | 'walletconnect'
+  wcProvider: null,
+  connections: {
+    evm:  { available: false, chainId: null, address: null, request: null },
+    sol:  { available: false, publicKey: null, signTransaction: null },
+    tron: { available: false, address: null, signTransaction: null },
+  },
+  balances: { bsc: null, eth: null, base: null, sol: null, tron: null },
+  // Legacy page state
+  legacy: {
+    mode: 'owner',
+    tokenAccounts: [],
+  },
 };
 
 const $ = id => document.getElementById(id);
 const setStatus = (msg, cls='') => { const e = $('status'); e.textContent = msg; e.className = 'status ' + cls; };
-
-function getProvider() {
-  return window.binancew3w?.solana || window.solana || null;
+const short = (s, n=6) => s ? (s.slice(0, n) + '…' + s.slice(-4)) : '';
+function b64(bytes) {
+  const u8 = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+  let s = '';
+  for (let i = 0; i < u8.length; i++) s += String.fromCharCode(u8[i]);
+  return btoa(s);
 }
+const hexPad = (bi, bytes=32) => bi.toString(16).padStart(bytes * 2, '0');
 
-async function connect() {
-  const p = getProvider();
-  if (!p) {
-    setStatus('Binance wallet provider not found. Install/enable the extension, reload.', 'err');
-    return;
-  }
-  try {
-    const res = await p.connect();
-    state.provider = p;
-    state.publicKey = res?.publicKey ?? p.publicKey;
-    state.conn = new Connection($('rpc').value.trim(), 'confirmed');
-    if (!state.publicKey) throw new Error('provider.connect() did not return a publicKey');
-    setStatus('Connected: ' + state.publicKey.toBase58(), 'ok');
-    $('connect').disabled = true;
-    $('disconnect').disabled = false;
-    $('signOnly').disabled = false;
-    $('signAndSend').disabled = false;
-    p.on?.('disconnect', onDisconnect);
-    p.on?.('accountChanged', pk => {
-      state.publicKey = pk;
-      setStatus('Account changed: ' + (pk?.toBase58?.() ?? 'disconnected'));
-      loadTokenAccounts().catch(() => {});
-    });
-    // Don't block on token-account fetch — RPCs often 403 public browser requests.
-    // User can still paste a token account pubkey manually.
-    loadTokenAccounts().catch(e => setStatus(
-      'Connected OK. Token-account auto-discovery failed (this is fine — paste the pubkey manually below, or set a custom RPC URL and click Reload). ' + (e?.message || e),
-      'err'
-    ));
-  } catch (e) {
-    setStatus('Connect failed: ' + (e?.message || e), 'err');
-  }
-}
+function netCfg(chainKey) { return CHAINS[chainKey][state.network]; }
 
-const RPC_CANDIDATES = [
-  'https://solana.drpc.org',
-  'https://api.metaplex.solana.com',
-  'https://solana-rpc.publicnode.com',
-  'https://solana.api.onfinality.io/public',
-  'https://rpc.ankr.com/solana',
-  'https://api.mainnet-beta.solana.com',
-];
+// ---------- RPC helpers ------------------------------------------------------
 
-async function tryFetchTokenAccounts(url) {
-  const conn = new Connection(url, 'confirmed');
-  const [spl, t22] = await Promise.all([
-    conn.getParsedTokenAccountsByOwner(state.publicKey, { programId: TOKEN_PROGRAM_ID }),
-    conn.getParsedTokenAccountsByOwner(state.publicKey, { programId: TOKEN_2022_PROGRAM_ID }),
-  ]);
-  return { conn, spl, t22 };
-}
-
-async function loadTokenAccounts() {
-  if (!state.publicKey) return;
-  const primary = $('rpc').value.trim();
-  if (!primary) { setStatus('RPC URL is empty', 'err'); return; }
-
-  // Try the user's input first, then the preset fallbacks (deduped).
-  const order = [primary, ...RPC_CANDIDATES.filter(u => u !== primary)];
+async function withRpcFallback(rpcs, fn) {
   const failures = [];
-  for (const url of order) {
-    try {
-      setStatus('Loading token accounts from ' + url + ' …');
-      const { conn, spl, t22 } = await tryFetchTokenAccounts(url);
-      state.conn = conn;
-      $('rpc').value = url; // reflect the RPC that actually worked
-      const rows = [];
-      for (const { pubkey, account } of spl.value) rows.push(toRow(pubkey, account, 'spl'));
-      for (const { pubkey, account } of t22.value) rows.push(toRow(pubkey, account, 't22'));
-      rows.sort((a, b) => (b.uiAmount || 0) - (a.uiAmount || 0) || a.mint.localeCompare(b.mint));
-      state.tokenAccounts = rows;
-      populatePicker('owner-pick');
-      populatePicker('close-pick');
-      setStatus(`Loaded ${rows.length} token account(s) via ${url}`, 'ok');
-      return;
-    } catch (e) {
-      const msg = (e?.message || String(e)).split('\n')[0].slice(0, 140);
-      failures.push(`${url} → ${msg}`);
-      console.warn('[rpc]', url, 'failed:', e);
+  for (const url of rpcs) {
+    try { return await fn(url); }
+    catch (e) {
+      failures.push(`${url} → ${(e?.message || String(e)).split('\n')[0].slice(0, 120)}`);
     }
   }
-  // All candidates failed — surface a detailed, actionable error.
-  console.group('Token-account RPC fallback — all candidates failed');
-  failures.forEach(f => console.log(f));
+  const err = new Error(`All ${rpcs.length} RPCs failed:\n` + failures.join('\n'));
+  err.rpcFailures = failures;
+  throw err;
+}
+
+async function ethJsonRpc(chainKey, method, params) {
+  const cfg = netCfg(chainKey);
+  return withRpcFallback(cfg.rpcs, async (url) => {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const j = await res.json();
+    if (j.error) throw new Error(j.error.message || JSON.stringify(j.error));
+    return j.result;
+  });
+}
+
+async function tronPost(endpoint, body) {
+  const cfg = netCfg('tron');
+  const url = cfg.httpApi + endpoint;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
+// ---------- Wallet: Binance -------------------------------------------------
+
+// Extensions typically inject *before* DOMContentLoaded, but not always — the
+// user's first click may race the injection. Poll for up to ~2s.
+async function waitForBinanceInjection(timeoutMs = 2000) {
+  const start = performance.now();
+  while (performance.now() - start < timeoutMs) {
+    if (window.binancew3w || window.ethereum || window.solana || window.tronLink) return;
+    await new Promise(r => setTimeout(r, 100));
+  }
+}
+
+function detectBinanceGlobals() {
+  return {
+    'window.binancew3w'          : !!window.binancew3w,
+    'window.binancew3w.ethereum' : !!window.binancew3w?.ethereum,
+    'window.binancew3w.solana'   : !!window.binancew3w?.solana,
+    'window.binancew3w.tron'     : !!window.binancew3w?.tron,
+    'window.ethereum'            : !!window.ethereum,
+    'window.ethereum.isBinance'  : !!window.ethereum?.isBinance,
+    'window.solana'              : !!window.solana,
+    'window.tronLink'            : !!window.tronLink,
+    'window.tron'                : !!window.tron,
+  };
+}
+
+async function connectBinance() {
+  setStatus('Waiting for Binance Wallet injection…');
+  state.connectionType = 'binance';
+
+  await waitForBinanceInjection();
+  const detected = detectBinanceGlobals();
+  console.log('[binance connect] detected globals:', detected);
+
+  // EVM — try binancew3w.ethereum first, then generic window.ethereum.
+  const evmProvider = window.binancew3w?.ethereum || window.ethereum || null;
+  if (evmProvider) {
+    try {
+      setStatus('Requesting EVM accounts…');
+      const accs = await evmProvider.request({ method: 'eth_requestAccounts' });
+      const chainId = await evmProvider.request({ method: 'eth_chainId' });
+      state.connections.evm = {
+        available: true,
+        chainId,
+        address: accs?.[0] || null,
+        request: (args) => evmProvider.request(args),
+        raw: evmProvider,
+      };
+      evmProvider.on?.('accountsChanged', (as) => { state.connections.evm.address = as?.[0] || null; refreshChainGrid(); });
+      evmProvider.on?.('chainChanged',    (id) => { state.connections.evm.chainId = id; refreshChainGrid(); });
+      console.log('[binance connect] EVM OK:', accs?.[0], chainId);
+    } catch (e) {
+      console.warn('[binance connect] EVM failed:', e);
+    }
+  }
+
+  // Solana
+  const solProvider = window.binancew3w?.solana || window.solana || null;
+  if (solProvider) {
+    try {
+      setStatus('Requesting Solana account…');
+      const res = await solProvider.connect();
+      const pk = res?.publicKey ?? solProvider.publicKey;
+      if (pk) {
+        state.connections.sol = {
+          available: true,
+          publicKey: pk instanceof PublicKey ? pk : new PublicKey(pk.toString()),
+          signTransaction: (tx) => solProvider.signTransaction(tx),
+          raw: solProvider,
+        };
+        solProvider.on?.('disconnect', () => { state.connections.sol.available = false; refreshChainGrid(); });
+        solProvider.on?.('accountChanged', (npk) => {
+          state.connections.sol.publicKey = npk instanceof PublicKey ? npk : (npk ? new PublicKey(npk.toString()) : null);
+          state.connections.sol.available = !!state.connections.sol.publicKey;
+          refreshChainGrid();
+          if (currentPage === 'legacy') loadTokenAccounts().catch(() => {});
+        });
+        console.log('[binance connect] SOL OK:', state.connections.sol.publicKey.toBase58());
+      }
+    } catch (e) {
+      console.warn('[binance connect] SOL failed:', e);
+    }
+  }
+
+  // TRON — Binance Wallet may or may not expose tron; TronLink is a common fallback.
+  const tronProvider = window.binancew3w?.tron || window.tron || window.tronLink || null;
+  if (tronProvider) {
+    try {
+      setStatus('Requesting TRON account…');
+      let tronWeb = tronProvider.tronWeb;
+      if (!tronWeb && tronProvider.request) {
+        await tronProvider.request({ method: 'tron_requestAccounts' });
+        tronWeb = tronProvider.tronWeb;
+      }
+      if (tronWeb) {
+        state.connections.tron = {
+          available: true,
+          address: tronWeb.defaultAddress?.base58 || null,
+          signTransaction: (tx) => tronWeb.trx.sign(tx),
+          raw: tronProvider,
+          tronWeb,
+        };
+        console.log('[binance connect] TRON OK:', state.connections.tron.address);
+      }
+    } catch (e) {
+      console.warn('[binance connect] TRON failed:', e);
+    }
+  }
+
+  const anyAvailable =
+    state.connections.evm.available ||
+    state.connections.sol.available ||
+    state.connections.tron.available;
+
+  if (!anyAvailable) {
+    const truthy = Object.entries(detected).filter(([, v]) => v).map(([k]) => k);
+    setStatus(
+      'No wallet available. Detected globals: ' + (truthy.join(', ') || '(none)') +
+      '. If Binance Wallet is installed, unlock it, reload the page, and try again. Check console for per-chain errors.',
+      'err',
+    );
+    state.connectionType = null;
+    return;
+  }
+
+  afterConnect();
+}
+
+// ---------- Wallet: WalletConnect -------------------------------------------
+
+async function connectWalletConnect() {
+  try {
+    const projectId = $('wc-project-id').value.trim() || localStorage.getItem('wcProjectId');
+    if (!projectId) {
+      setStatus('WalletConnect Project ID required (get one at https://cloud.reown.com).', 'err');
+      return;
+    }
+    localStorage.setItem('wcProjectId', projectId);
+    setStatus('Loading WalletConnect provider…');
+
+    const UP = await loadUniversalProvider();
+    const provider = await UP.init({
+      projectId,
+      metadata: {
+        name: 'Multi-Chain Sim-Failure Test',
+        description: 'Test wallet simulation-failure prompts across 5 chains',
+        url: window.location.origin || 'https://example.com',
+        icons: [],
+      },
+    });
+    state.wcProvider = provider;
+    state.connectionType = 'walletconnect';
+
+    const evmChainIds = [
+      `eip155:${CHAINS.bsc[state.network].chainIdDec}`,
+      `eip155:${CHAINS.eth[state.network].chainIdDec}`,
+      `eip155:${CHAINS.base[state.network].chainIdDec}`,
+    ];
+    const solChainKey = state.network === 'testnet'
+      ? 'solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1'
+      : 'solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp';
+    const tronChainKey = state.network === 'testnet' ? 'tron:0xcd8690dc' : 'tron:0x2b6653dc';
+
+    provider.on?.('display_uri', (uri) => {
+      $('status').innerHTML =
+        `Scan with a WalletConnect-compatible wallet: <code style="word-break:break-all;font-size:0.75em">${uri}</code>`;
+      try { navigator.clipboard?.writeText(uri); } catch {}
+    });
+
+    await provider.connect({
+      namespaces: {
+        eip155: {
+          methods: ['eth_sendTransaction', 'eth_signTransaction', 'personal_sign', 'eth_chainId', 'wallet_switchEthereumChain'],
+          chains: evmChainIds,
+          events: ['chainChanged', 'accountsChanged'],
+        },
+        solana: {
+          methods: ['solana_signTransaction', 'solana_signMessage'],
+          chains: [solChainKey],
+          events: [],
+        },
+        tron: {
+          methods: ['tron_signTransaction', 'tron_signMessage'],
+          chains: [tronChainKey],
+          events: [],
+        },
+      },
+      optionalNamespaces: {},
+    });
+
+    const session = provider.session;
+    if (!session) throw new Error('WalletConnect session was not established');
+
+    const evmAccounts  = session.namespaces.eip155?.accounts || [];
+    const solAccounts  = session.namespaces.solana?.accounts || [];
+    const tronAccounts = session.namespaces.tron?.accounts || [];
+
+    if (evmAccounts.length) {
+      const [, chainDec, addr] = evmAccounts[0].split(':');
+      state.connections.evm = {
+        available: true,
+        chainId: '0x' + Number(chainDec).toString(16),
+        address: addr,
+        request: async ({ method, params }) => {
+          const targetChainId = state.connections.evm.chainId;
+          return provider.request({ method, params }, `eip155:${parseInt(targetChainId, 16)}`);
+        },
+        raw: provider,
+      };
+    }
+    if (solAccounts.length) {
+      const [, , addr] = solAccounts[0].split(':');
+      state.connections.sol = {
+        available: true,
+        publicKey: new PublicKey(addr),
+        signTransaction: async (tx) => {
+          const serialized = tx.serialize({ requireAllSignatures: false, verifySignatures: false });
+          const res = await provider.request(
+            { method: 'solana_signTransaction', params: { transaction: b64(serialized) } },
+            solChainKey
+          );
+          if (res?.transaction) return Transaction.from(Uint8Array.from(atob(res.transaction), c => c.charCodeAt(0)));
+          if (res?.signature) {
+            tx.addSignature(state.connections.sol.publicKey, Uint8Array.from(atob(res.signature), c => c.charCodeAt(0)));
+            return tx;
+          }
+          throw new Error('Unexpected solana_signTransaction response: ' + JSON.stringify(res));
+        },
+        raw: provider,
+      };
+    }
+    if (tronAccounts.length) {
+      const [, , addr] = tronAccounts[0].split(':');
+      state.connections.tron = {
+        available: true,
+        address: addr,
+        signTransaction: async (tx) => provider.request(
+          { method: 'tron_signTransaction', params: { transaction: tx } },
+          tronChainKey
+        ),
+        raw: provider,
+      };
+    }
+
+    afterConnect();
+  } catch (e) {
+    setStatus('WalletConnect connect failed: ' + (e?.message || e), 'err');
+  }
+}
+
+// ---------- Diagnose (visible in status area) -------------------------------
+
+function diagnose() {
+  const globs = detectBinanceGlobals();
+  const truthy = Object.entries(globs).filter(([,v]) => v).map(([k]) => k);
+  const conns = {
+    evm:  state.connections.evm.available  ? state.connections.evm.address  : '—',
+    sol:  state.connections.sol.available  ? state.connections.sol.publicKey?.toBase58?.() : '—',
+    tron: state.connections.tron.available ? state.connections.tron.address : '—',
+  };
+  console.group('[diagnose]');
+  console.log('globals:', globs);
+  console.log('connections:', conns);
+  console.log('connectionType:', state.connectionType);
+  console.log('network:', state.network);
   console.groupEnd();
-  throw new Error(
-    `All ${order.length} RPCs blocked this request. Use your own RPC URL (Helius free tier, Triton, QuickNode, Alchemy) ` +
-    `or paste the token account pubkey manually in the input below. See browser console for per-RPC errors.`
+  setStatus(
+    'Diagnose: globals=[' + (truthy.join(', ') || 'none') + '] · ' +
+    'evm=' + (conns.evm !== '—' ? short(conns.evm, 6) : '—') + ' · ' +
+    'sol=' + (typeof conns.sol === 'string' && conns.sol !== '—' ? short(conns.sol, 6) : '—') + ' · ' +
+    'tron=' + (conns.tron !== '—' ? short(conns.tron, 6) : '—') +
+    '. See console for detail.',
+    truthy.length ? 'ok' : 'err',
   );
+}
+
+// ---------- Post-connect UI wiring ------------------------------------------
+
+function afterConnect() {
+  $('connect-binance').disabled = true;
+  $('connect-wc').disabled = true;
+  $('disconnect').disabled = false;
+  const parts = [];
+  if (state.connections.evm.available)  parts.push('EVM ' + short(state.connections.evm.address || ''));
+  if (state.connections.sol.available)  parts.push('SOL ' + short(state.connections.sol.publicKey?.toBase58?.() || ''));
+  if (state.connections.tron.available) parts.push('TRON ' + short(state.connections.tron.address || ''));
+  setStatus('Connected via ' + state.connectionType + ' — ' + (parts.join(' · ') || 'no chains'), 'ok');
+  refreshChainGrid();
+  refreshBalances().catch(e => console.warn('balance refresh', e));
+
+  // Legacy page: enable buttons + load token accounts if we've got Solana.
+  updateLegacyButtons();
+  if (state.connections.sol.available) {
+    loadTokenAccounts().catch(e => console.warn('token accounts', e));
+  }
+  // EVM Interactions / Message Signing: re-render so default `from` fields
+  // fill in with the newly-connected wallet address.
+  if (state.connections.evm.available) {
+    renderEvmTxCards();
+    renderEvmMsgCards();
+  }
+}
+
+async function disconnect() {
+  try {
+    if (state.connectionType === 'walletconnect' && state.wcProvider) {
+      await state.wcProvider.disconnect().catch(() => {});
+    }
+    for (const key of ['sol', 'tron']) {
+      const c = state.connections[key];
+      if (c.raw?.disconnect) await c.raw.disconnect().catch(() => {});
+    }
+  } catch {}
+  state.connectionType = null;
+  state.wcProvider = null;
+  state.connections = {
+    evm:  { available: false, chainId: null, address: null, request: null },
+    sol:  { available: false, publicKey: null, signTransaction: null },
+    tron: { available: false, address: null, signTransaction: null },
+  };
+  state.balances = { bsc: null, eth: null, base: null, sol: null, tron: null };
+  state.legacy.tokenAccounts = [];
+  $('connect-binance').disabled = false;
+  $('connect-wc').disabled = false;
+  $('disconnect').disabled = true;
+  setStatus('Disconnected');
+  refreshChainGrid();
+  populatePicker('owner-pick');
+  populatePicker('close-pick');
+  updateLegacyButtons();
+}
+
+// ---------- Chain status grid -----------------------------------------------
+
+function refreshChainGrid() {
+  const grid = $('chain-status-grid');
+  grid.innerHTML = '';
+  const rows = [
+    ['bsc',  state.connections.evm.address],
+    ['eth',  state.connections.evm.address],
+    ['base', state.connections.evm.address],
+    ['sol',  state.connections.sol.publicKey?.toBase58?.()],
+    ['tron', state.connections.tron.address],
+  ];
+  for (const [key, addr] of rows) {
+    const cfg = netCfg(key);
+    const bal = state.balances[key];
+    const wrap = document.createElement('div');
+    wrap.className = 'chain-status';
+    wrap.innerHTML =
+      `<div class="chain-name"><span class="chain-badge ${key}">${CHAINS[key].label}</span> <span class="chain-net">${cfg.name}</span></div>` +
+      `<div class="chain-addr">${addr ? short(addr, 8) : '(not connected)'}</div>` +
+      `<div class="chain-bal">${bal == null ? '' : `balance: ${bal}`}</div>` +
+      (cfg.faucet ? `<div><a href="${cfg.faucet}" target="_blank" rel="noreferrer" style="font-size:0.78em">faucet ↗</a></div>` : '');
+    grid.appendChild(wrap);
+  }
+}
+
+async function refreshBalances() {
+  const evmAddr = state.connections.evm.address;
+  const jobs = [];
+  if (evmAddr) {
+    for (const k of ['bsc', 'eth', 'base']) {
+      jobs.push(
+        ethJsonRpc(k, 'eth_getBalance', [evmAddr, 'latest'])
+          .then(hex => { state.balances[k] = (Number(BigInt(hex)) / 1e18).toFixed(6) + ' native'; })
+          .catch(() => { state.balances[k] = '(rpc err)'; })
+      );
+    }
+  }
+  const solPk = state.connections.sol.publicKey;
+  if (solPk) {
+    jobs.push((async () => {
+      const cfg = netCfg('sol');
+      try {
+        const bal = await withRpcFallback(cfg.rpcs, async (url) => {
+          const conn = new Connection(url, 'confirmed');
+          return conn.getBalance(solPk);
+        });
+        state.balances.sol = (bal / 1e9).toFixed(6) + ' SOL';
+      } catch { state.balances.sol = '(rpc err)'; }
+    })());
+  }
+  if (state.connections.tron.address) {
+    jobs.push((async () => {
+      try {
+        const j = await tronPost('/wallet/getaccount', { address: state.connections.tron.address, visible: true });
+        state.balances.tron = ((j.balance || 0) / 1e6).toFixed(6) + ' TRX';
+      } catch { state.balances.tron = '(rpc err)'; }
+    })());
+  }
+  await Promise.all(jobs);
+  refreshChainGrid();
+}
+
+// ---------- EVM chain switching ---------------------------------------------
+
+async function ensureEvmChain(chainKey) {
+  const cfg = netCfg(chainKey);
+  const cur = state.connections.evm.chainId;
+  if (cur === cfg.chainId) return;
+  try {
+    await state.connections.evm.request({
+      method: 'wallet_switchEthereumChain',
+      params: [{ chainId: cfg.chainId }],
+    });
+    state.connections.evm.chainId = cfg.chainId;
+  } catch (e) {
+    if (e?.code === 4902 || /unrecognized|not added/i.test(e?.message || '')) {
+      await state.connections.evm.request({
+        method: 'wallet_addEthereumChain',
+        params: [{
+          chainId: cfg.chainId,
+          chainName: cfg.name,
+          rpcUrls: cfg.rpcs,
+          nativeCurrency: { name: 'native', symbol: chainKey === 'bsc' ? 'BNB' : 'ETH', decimals: 18 },
+        }],
+      });
+      state.connections.evm.chainId = cfg.chainId;
+    } else {
+      throw e;
+    }
+  }
+}
+
+// ---------- Tx builders: EVM -------------------------------------------------
+
+async function buildEvmInsufficient(chainKey) {
+  const from = state.connections.evm.address;
+  if (!from) throw new Error('EVM wallet not connected');
+  const cfg = netCfg(chainKey);
+
+  // Complete legacy-tx fields to eliminate any construction ambiguity that
+  // could cause the wallet's parse-transaction service to bail before its
+  // balance check runs. Include nonce, chainId, and type=0x0 explicitly.
+  const nonce = await ethJsonRpc(chainKey, 'eth_getTransactionCount', [from, 'latest'])
+    .catch(() => '0x0');
+
+  const tx = {
+    from,
+    to:       '0xdead000000000000000042069420694206942069',  // all-lowercase burn (no checksum ambiguity)
+    value:    '0x' + (10n ** 21n).toString(16),              // 1000 native — clearly insufficient, not astronomical
+    gas:      '0x5208',                                       // 21000
+    gasPrice: '0x12A05F200',                                  // 5 gwei — above BSC/ETH/BASE minimums
+    nonce,
+    chainId:  cfg.chainId,
+    type:     '0x0',
+  };
+
+  // Pre-flight: ask the node what error IT returns for this tx. If the node
+  // returns a clean "insufficient funds" string, we know construction is fine
+  // and any 953130 from parse-transaction is a wallet-side classification bug.
+  try {
+    await ethJsonRpc(chainKey, 'eth_estimateGas', [{ from: tx.from, to: tx.to, value: tx.value, data: '0x' }]);
+    console.warn(`[preflight ${chainKey}] eth_estimateGas SUCCEEDED unexpectedly — check balance/RPC state`);
+  } catch (e) {
+    console.log(`[preflight ${chainKey}] node error (expected insufficient funds):`, e?.message);
+  }
+
+  return tx;
+}
+
+async function buildEvmRevert(chainKey) {
+  const from = state.connections.evm.address;
+  if (!from) throw new Error('EVM wallet not connected');
+  const cfg = netCfg(chainKey);
+  const data = '0xa9059cbb' + hexPad(BigInt(from), 32) + hexPad(10n ** 30n, 32);
+  return {
+    from, to: cfg.revertContract, value: '0x0', data,
+    gas: '0x30d40',                             // 200_000 — enough to reach the ERC20 balance check
+    gasPrice: '0x12A05F200',                    // 5 gwei — hardcoded (see insufficient case)
+  };
+}
+
+async function signEvm(chainKey, txParams) {
+  await ensureEvmChain(chainKey);
+  console.log(`[signEvm ${chainKey}] eth_sendTransaction params:`, txParams);
+  // Use eth_sendTransaction — the standard browser-wallet entrypoint. The wallet
+  // runs simulation *before* prompting, which is exactly what we want to test.
+  try {
+    const res = await state.connections.evm.request({ method: 'eth_sendTransaction', params: [txParams] });
+    console.log(`[signEvm ${chainKey}] response:`, res);
+    return res;
+  } catch (e) {
+    console.log(`[signEvm ${chainKey}] error:`, e, 'code:', e?.code, 'data:', e?.data);
+    throw e;
+  }
+}
+
+// ---------- Tx builders: Solana ---------------------------------------------
+
+async function getSolBlockhash() {
+  const cfg = netCfg('sol');
+  return withRpcFallback(cfg.rpcs, async (url) => {
+    const conn = new Connection(url, 'confirmed');
+    const { blockhash } = await conn.getLatestBlockhash('confirmed');
+    return blockhash;
+  });
+}
+
+async function buildSolFee() {
+  const signer = state.connections.sol.publicKey;
+  if (!signer) throw new Error('Solana wallet not connected');
+  const tx = new Transaction();
+  tx.feePayer = signer;
+  tx.recentBlockhash = await getSolBlockhash();
+  tx.add(ComputeBudgetProgram.setComputeUnitLimit({ units: 1_400_000 }));
+  tx.add(ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 1_000_000_000_000n }));
+  tx.add(SystemProgram.transfer({ fromPubkey: signer, toPubkey: signer, lamports: 1 }));
+  return tx;
+}
+
+async function buildSolRent() {
+  const signer = state.connections.sol.publicKey;
+  if (!signer) throw new Error('Solana wallet not connected');
+  const tx = new Transaction();
+  tx.feePayer = signer;
+  tx.recentBlockhash = await getSolBlockhash();
+  const newAccount = Keypair.generate();
+  tx.add(SystemProgram.createAccount({
+    fromPubkey: signer,
+    newAccountPubkey: newAccount.publicKey,
+    lamports: 100,
+    space: 10_000_000,
+    programId: SystemProgram.programId,
+  }));
+  tx.partialSign(newAccount);
+  return tx;
+}
+
+async function buildSolRevert() {
+  const signer = state.connections.sol.publicKey;
+  if (!signer) throw new Error('Solana wallet not connected');
+  const tx = new Transaction();
+  tx.feePayer = signer;
+  tx.recentBlockhash = await getSolBlockhash();
+  tx.add(SystemProgram.transfer({
+    fromPubkey: signer, toPubkey: signer, lamports: 1_000_000_000_000_000_000n,
+  }));
+  return tx;
+}
+
+// ---------- Tx builders: TRON -----------------------------------------------
+
+async function buildTronInsufficient() {
+  const from = state.connections.tron.address;
+  if (!from) throw new Error('TRON wallet not connected');
+  const j = await tronPost('/wallet/createtransaction', {
+    owner_address: from, to_address: from, amount: 10 ** 15, visible: true,
+  });
+  if (j.Error) throw new Error(j.Error);
+  return j;
+}
+
+async function buildTronRevert() {
+  const from = state.connections.tron.address;
+  if (!from) throw new Error('TRON wallet not connected');
+  const cfg = netCfg('tron');
+  const fromHex21 = base58ToHex(from);
+  const addrParam = '0'.repeat(24) + fromHex21.slice(2);
+  const amtParam = hexPad(10n ** 30n, 32);
+  const j = await tronPost('/wallet/triggersmartcontract', {
+    owner_address: from,
+    contract_address: cfg.revertContract,
+    function_selector: 'transfer(address,uint256)',
+    parameter: addrParam + amtParam,
+    fee_limit: 100_000_000,
+    call_value: 0,
+    visible: true,
+  });
+  if (j.result?.result !== true) {
+    throw new Error('triggersmartcontract construction failed: ' + JSON.stringify(j));
+  }
+  return j.transaction;
+}
+
+function base58ToHex(b58) {
+  const ALPH = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
+  let num = 0n;
+  for (const ch of b58) {
+    const idx = ALPH.indexOf(ch);
+    if (idx < 0) throw new Error('bad base58 char: ' + ch);
+    num = num * 58n + BigInt(idx);
+  }
+  let hex = num.toString(16);
+  if (hex.length % 2) hex = '0' + hex;
+  for (const ch of b58) { if (ch !== '1') break; hex = '00' + hex; }
+  hex = hex.slice(0, -8);
+  return '0x' + hex;
+}
+
+async function signTron(tx) {
+  return state.connections.tron.signTransaction(tx);
+}
+
+// ---------- Cases registry (Simulation Failures page) -----------------------
+
+const CASES = [
+  { id: 'bsc-insufficient',  chain: 'bsc',  type: 'insufficient funds for gas * price',
+    desc: 'Native transfer with value = balance + 1 native. Wallet reports "insufficient funds for gas * price + value".',
+    title: 'BSC insufficient funds',
+    build: () => buildEvmInsufficient('bsc'),  sign: (tx) => signEvm('bsc', tx)  },
+  { id: 'bsc-revert',        chain: 'bsc',  type: 'simulation reverted',
+    desc: 'USDT-BSC transfer(self, 10^30). ERC20 require(balance ≥ amount) reverts during eth_estimateGas.',
+    title: 'BSC ERC20 transfer revert',
+    build: () => buildEvmRevert('bsc'),        sign: (tx) => signEvm('bsc', tx)  },
+  { id: 'eth-insufficient',  chain: 'eth',  type: 'insufficient funds for gas * price',
+    desc: 'Native transfer with value = balance + 1 ETH.',
+    title: 'ETH insufficient funds',
+    build: () => buildEvmInsufficient('eth'),  sign: (tx) => signEvm('eth', tx)  },
+  { id: 'eth-revert',        chain: 'eth',  type: 'simulation reverted',
+    desc: 'Calls an ERC20 transfer(self, 10^30). Reverts on simulation.',
+    title: 'ETH ERC20 transfer revert',
+    build: () => buildEvmRevert('eth'),        sign: (tx) => signEvm('eth', tx)  },
+  { id: 'base-insufficient', chain: 'base', type: 'insufficient funds for gas * price',
+    desc: 'Native transfer with value = balance + 1 ETH.',
+    title: 'BASE insufficient funds',
+    build: () => buildEvmInsufficient('base'), sign: (tx) => signEvm('base', tx) },
+  { id: 'base-revert',       chain: 'base', type: 'simulation reverted',
+    desc: 'USDC on Base transfer(self, 10^30). Reverts on simulation.',
+    title: 'BASE ERC20 transfer revert',
+    build: () => buildEvmRevert('base'),       sign: (tx) => signEvm('base', tx) },
+  { id: 'sol-fee',           chain: 'sol',  type: 'InsufficientFundsForFee',
+    desc: 'ComputeBudget priority fee set to 1.4e18 lamports (1e12 µLamports/CU × 1.4M CU).',
+    title: 'SOL InsufficientFundsForFee',
+    build: () => buildSolFee(),                sign: (tx) => state.connections.sol.signTransaction(tx) },
+  { id: 'sol-rent',          chain: 'sol',  type: 'InsufficientFundsForRent',
+    desc: 'SystemProgram.createAccount with space=10MB and lamports=100 — well below rent-exempt.',
+    title: 'SOL InsufficientFundsForRent',
+    build: () => buildSolRent(),               sign: (tx) => state.connections.sol.signTransaction(tx) },
+  { id: 'sol-revert',        chain: 'sol',  type: 'simulation reverted (generic)',
+    desc: 'SystemProgram.transfer of 1e18 lamports to self — far above balance.',
+    title: 'SOL generic simulation failure',
+    build: () => buildSolRevert(),             sign: (tx) => state.connections.sol.signTransaction(tx) },
+  { id: 'tron-insufficient', chain: 'tron', type: 'insufficient funds',
+    desc: 'sendTrx amount = 1e9 TRX to self. Node-side pre-flight rejects with BALANCE_INSUFFICIENT.',
+    title: 'TRON insufficient funds',
+    build: () => buildTronInsufficient(),      sign: (tx) => signTron(tx) },
+  { id: 'tron-revert',       chain: 'tron', type: 'simulation reverted',
+    desc: 'USDT-TRC20 transfer(self, 10^30). triggerconstantcontract reports REVERT.',
+    title: 'TRON TRC20 transfer revert',
+    build: () => buildTronRevert(),            sign: (tx) => signTron(tx) },
+];
+
+function renderCards() {
+  const grid = $('card-grid');
+  grid.innerHTML = '';
+  for (const c of CASES) {
+    const card = document.createElement('div');
+    card.className = 'card';
+    card.dataset.case = c.id;
+    card.innerHTML =
+      `<div class="card-header">
+        <span class="chain-badge ${c.chain}">${CHAINS[c.chain].label}</span>
+        <span class="failure-type">${c.type}</span>
+      </div>
+      <div class="card-desc">${c.desc}</div>
+      <button class="primary sign-btn">Sign Only</button>
+      <div class="card-status">idle</div>`;
+    card.querySelector('.sign-btn').addEventListener('click', () => handleSign(c.id, card));
+    grid.appendChild(card);
+  }
+}
+
+async function handleSign(caseId, cardEl) {
+  const c = CASES.find(x => x.id === caseId);
+  const statusEl = cardEl.querySelector('.card-status');
+  const setCardStatus = (msg, cls='') => { statusEl.textContent = msg; statusEl.className = 'card-status ' + cls; };
+
+  const required = { bsc: 'evm', eth: 'evm', base: 'evm', sol: 'sol', tron: 'tron' }[c.chain];
+  if (!state.connections[required].available) {
+    setCardStatus(`Wallet not connected for ${c.chain}. Connect Binance Wallet or WalletConnect first.`, 'err');
+    return;
+  }
+
+  try {
+    setCardStatus('Building transaction…');
+    const tx = await c.build();
+    $('out-case').textContent = c.title;
+    $('out-unsigned').textContent = formatTxPreview(c.chain, tx);
+    $('out-signed').textContent = '(awaiting wallet response)';
+
+    setCardStatus('Requesting wallet signature…');
+    const signed = await c.sign(tx);
+    const outText = typeof signed === 'string'
+      ? signed
+      : (signed?.serialize ? b64(signed.serialize({ requireAllSignatures: false, verifySignatures: false })) : JSON.stringify(signed).slice(0, 800));
+    $('out-signed').textContent = outText;
+    setCardStatus('Signed (wallet did NOT block the sim failure).', 'ok');
+  } catch (e) {
+    const msg = e?.message || String(e);
+    $('out-signed').textContent = msg;
+    setCardStatus('Wallet rejected / errored: ' + msg.slice(0, 200), 'err');
+  }
+}
+
+function formatTxPreview(chain, tx) {
+  if (chain === 'sol') return b64(tx.serialize({ requireAllSignatures: false, verifySignatures: false }));
+  if (chain === 'tron') return JSON.stringify(tx, null, 2).slice(0, 1200);
+  return JSON.stringify(tx, null, 2);
+}
+
+// ============================================================================
+// EVM Interactions & EVM Message Signing pages
+// ============================================================================
+//
+// Adapted from https://github.com/MetaMask/test-dapp — ERC20/721/1155/EIP-747
+// interaction flows plus the six standard EVM message-signing methods.
+// We avoid viem/ethers and keccak256 libs; ABI encoding is hand-written and
+// function selectors are hardcoded constants below.
+
+// ---- Function selectors (first 4 bytes of keccak256(signature)) -------------
+
+const SEL = {
+  // ERC20
+  transfer:            '0xa9059cbb',  // transfer(address,uint256)
+  approve:             '0x095ea7b3',  // approve(address,uint256)
+  increaseAllowance:   '0x39509351',  // increaseAllowance(address,uint256)
+  allowance:           '0xdd62ed3e',  // allowance(address,address)
+  transferFrom:        '0x23b872dd',  // transferFrom(address,address,uint256)
+  // ERC721 (approve / transferFrom share selectors with ERC20)
+  setApprovalForAll:   '0xa22cb465',  // setApprovalForAll(address,bool)
+  mintNFTs:            '0x3b4b1381',  // mintNFTs() — TestDappNFTs helper
+  // ERC1155
+  mintBatch:           '0xd81d0a15',  // mintBatch(address,uint256[],uint256[],bytes)
+  safeBatchTransferFrom:'0x2eb2c2d6', // safeBatchTransferFrom(address,address,uint256[],uint256[],bytes)
+  // ERC6909 — multi-token single-contract (ERC1155 successor, simpler)
+  erc6909Transfer:      '0x095bcdb6', // transfer(address,uint256,uint256)  — receiver, id, amount
+  erc6909TransferFrom:  '0xfe99049a', // transferFrom(address,address,uint256,uint256)
+  erc6909Approve:       '0x426a8493', // approve(address,uint256,uint256)   — spender, id, amount
+  erc6909SetOperator:   '0x558a7297', // setOperator(address,bool)
+  erc6909BalanceOf:     '0x00fdd58e', // balanceOf(address,uint256)
+};
+
+// ---- ABI encoders ----------------------------------------------------------
+
+const abiAddress = (hex) => hexPad(BigInt(hex), 32);
+const abiUint256 = (bi)  => hexPad(typeof bi === 'bigint' ? bi : BigInt(bi), 32);
+const abiBool    = (b)   => hexPad(b ? 1n : 0n, 32);
+// Encode a dynamic uint256[] at a given data offset (returns {head, tail}).
+function abiUint256Array(arr) {
+  const items = arr.map(v => abiUint256(v)).join('');
+  return abiUint256(arr.length) + items;
+}
+// Encode a dynamic bytes value.
+function abiBytes(hexData) {
+  const clean = hexData.replace(/^0x/, '');
+  const bytes = clean.length / 2;
+  const paddedLen = Math.ceil(clean.length / 64) * 64;
+  return abiUint256(bytes) + clean.padEnd(paddedLen, '0');
+}
+const GAS_PRICE_DEFAULT   = '0x12A05F200'; // 5 gwei
+const GAS_PRICE_LOWBALL   = '0x1';         // "Without Gas" cases — 1 wei, node will reject
+const GAS_LIMIT_STANDARD  = '0x30d40';     // 200_000
+const GAS_LIMIT_TRANSFER  = '0x5208';      // 21_000
+const GAS_LIMIT_DEPLOY    = '0x2DC6C0';    // 3_000_000
+const DEAD_ADDRESS        = '0x000000000000000000000000000000000000dead';
+
+// ---- Address helpers -------------------------------------------------------
+
+function evmSelf() {
+  const a = state.connections.evm.address;
+  if (!a) throw new Error('EVM wallet not connected');
+  return a;
+}
+function readCardFields(card) {
+  const out = {};
+  card.querySelectorAll('[data-field]').forEach(el => { out[el.dataset.field] = el.value.trim(); });
+  return out;
+}
+
+// ---- Tx builders (each returns eth_sendTransaction params) -----------------
+
+// ERC20
+function buildErc20Transfer({ chain, contract, to, amount, gasPrice = GAS_PRICE_DEFAULT }) {
+  const from = evmSelf();
+  const data = SEL.transfer + abiAddress(to) + abiUint256(amount);
+  return { chain, tx: { from, to: contract, value: '0x0', data, gas: GAS_LIMIT_STANDARD, gasPrice } };
+}
+function buildErc20Approve({ chain, contract, spender, amount, gasPrice = GAS_PRICE_DEFAULT }) {
+  const from = evmSelf();
+  const data = SEL.approve + abiAddress(spender) + abiUint256(amount);
+  return { chain, tx: { from, to: contract, value: '0x0', data, gas: GAS_LIMIT_STANDARD, gasPrice } };
+}
+function buildErc20IncreaseAllowance({ chain, contract, spender, added }) {
+  const from = evmSelf();
+  const data = SEL.increaseAllowance + abiAddress(spender) + abiUint256(added);
+  return { chain, tx: { from, to: contract, value: '0x0', data, gas: GAS_LIMIT_STANDARD, gasPrice: GAS_PRICE_DEFAULT } };
+}
+function buildErc20TransferFrom({ chain, contract, sender, recipient, amount }) {
+  const from = evmSelf();
+  const data = SEL.transferFrom + abiAddress(sender) + abiAddress(recipient) + abiUint256(amount);
+  return { chain, tx: { from, to: contract, value: '0x0', data, gas: GAS_LIMIT_STANDARD, gasPrice: GAS_PRICE_DEFAULT } };
+}
+
+// ERC721
+function buildErc721Approve({ chain, contract, spender, tokenId }) {
+  const from = evmSelf();
+  const data = SEL.approve + abiAddress(spender) + abiUint256(tokenId);
+  return { chain, tx: { from, to: contract, value: '0x0', data, gas: GAS_LIMIT_STANDARD, gasPrice: GAS_PRICE_DEFAULT } };
+}
+function buildErc721SetApprovalForAll({ chain, contract, operator, approved }) {
+  const from = evmSelf();
+  const data = SEL.setApprovalForAll + abiAddress(operator) + abiBool(approved);
+  return { chain, tx: { from, to: contract, value: '0x0', data, gas: GAS_LIMIT_STANDARD, gasPrice: GAS_PRICE_DEFAULT } };
+}
+function buildErc721TransferFrom({ chain, contract, sender, recipient, tokenId }) {
+  const from = evmSelf();
+  const data = SEL.transferFrom + abiAddress(sender) + abiAddress(recipient) + abiUint256(tokenId);
+  return { chain, tx: { from, to: contract, value: '0x0', data, gas: GAS_LIMIT_STANDARD, gasPrice: GAS_PRICE_DEFAULT } };
+}
+function buildErc721Mint({ chain, contract }) {
+  const from = evmSelf();
+  return { chain, tx: { from, to: contract, value: '0x0', data: SEL.mintNFTs, gas: GAS_LIMIT_STANDARD, gasPrice: GAS_PRICE_DEFAULT } };
+}
+
+// ERC1155 — mintBatch(address, uint256[], uint256[], bytes)
+function buildErc1155BatchMint({ chain, contract, to, ids, amounts }) {
+  const from = evmSelf();
+  // Head: to (32) | offsetIds (32) | offsetAmounts (32) | offsetData (32) = 128 bytes = 0x80
+  // We compute offsets manually since arrays are dynamic.
+  const head1 = abiAddress(to);
+  // We'll build tail segments and compute offsets:
+  const idsBody     = abiUint256Array(ids);      // length + items
+  const amountsBody = abiUint256Array(amounts);
+  const dataBody    = abiBytes('0x');            // empty bytes
+  // Offsets (in bytes) from start of param area:
+  const offIds     = 4 * 32;                     // 128
+  const offAmounts = offIds + idsBody.length / 2;
+  const offData    = offAmounts + amountsBody.length / 2;
+  const encoded = head1
+    + abiUint256(offIds)
+    + abiUint256(offAmounts)
+    + abiUint256(offData)
+    + idsBody + amountsBody + dataBody;
+  return { chain, tx: { from, to: contract, value: '0x0', data: SEL.mintBatch + encoded,
+                        gas: GAS_LIMIT_DEPLOY, gasPrice: GAS_PRICE_DEFAULT } };
+}
+// safeBatchTransferFrom(address from, address to, uint256[] ids, uint256[] amounts, bytes data)
+function buildErc1155BatchTransfer({ chain, contract, sender, recipient, ids, amounts }) {
+  const from = evmSelf();
+  const head1 = abiAddress(sender);
+  const head2 = abiAddress(recipient);
+  const idsBody     = abiUint256Array(ids);
+  const amountsBody = abiUint256Array(amounts);
+  const dataBody    = abiBytes('0x');
+  const offIds     = 5 * 32;                     // 5 head slots: from|to|offIds|offAmounts|offData
+  const offAmounts = offIds + idsBody.length / 2;
+  const offData    = offAmounts + amountsBody.length / 2;
+  const encoded = head1 + head2
+    + abiUint256(offIds) + abiUint256(offAmounts) + abiUint256(offData)
+    + idsBody + amountsBody + dataBody;
+  return { chain, tx: { from, to: contract, value: '0x0', data: SEL.safeBatchTransferFrom + encoded,
+                        gas: GAS_LIMIT_DEPLOY, gasPrice: GAS_PRICE_DEFAULT } };
+}
+
+// ERC6909
+function buildErc6909Transfer({ chain, contract, receiver, id, amount }) {
+  const from = evmSelf();
+  const data = SEL.erc6909Transfer + abiAddress(receiver) + abiUint256(id) + abiUint256(amount);
+  return { chain, tx: { from, to: contract, value: '0x0', data, gas: GAS_LIMIT_STANDARD, gasPrice: GAS_PRICE_DEFAULT } };
+}
+function buildErc6909TransferFrom({ chain, contract, sender, receiver, id, amount }) {
+  const from = evmSelf();
+  const data = SEL.erc6909TransferFrom + abiAddress(sender) + abiAddress(receiver) + abiUint256(id) + abiUint256(amount);
+  return { chain, tx: { from, to: contract, value: '0x0', data, gas: GAS_LIMIT_STANDARD, gasPrice: GAS_PRICE_DEFAULT } };
+}
+function buildErc6909Approve({ chain, contract, spender, id, amount }) {
+  const from = evmSelf();
+  const data = SEL.erc6909Approve + abiAddress(spender) + abiUint256(id) + abiUint256(amount);
+  return { chain, tx: { from, to: contract, value: '0x0', data, gas: GAS_LIMIT_STANDARD, gasPrice: GAS_PRICE_DEFAULT } };
+}
+function buildErc6909SetOperator({ chain, contract, operator, approved }) {
+  const from = evmSelf();
+  const data = SEL.erc6909SetOperator + abiAddress(operator) + abiBool(approved);
+  return { chain, tx: { from, to: contract, value: '0x0', data, gas: GAS_LIMIT_STANDARD, gasPrice: GAS_PRICE_DEFAULT } };
+}
+async function callErc6909BalanceOf({ chain, contract, owner, id }) {
+  const data = SEL.erc6909BalanceOf + abiAddress(owner) + abiUint256(id);
+  const hex = await ethJsonRpc(chain, 'eth_call', [{ to: contract, data }, 'latest']);
+  return BigInt(hex).toString();
+}
+
+// Deploy — send a contract-creation tx. Bytecode is left empty by default so
+// that Deploy cards are best-effort: QA can paste bytecode in the UI to test
+// real deployment simulation, or leave it as-is to test the empty-code path.
+function buildEvmDeploy({ chain, bytecode }) {
+  const from = evmSelf();
+  const data = bytecode && bytecode !== '0x' ? bytecode : '0x60006000f3'; // minimal `RETURN` stub if no code
+  return { chain, tx: { from, value: '0x0', data, gas: GAS_LIMIT_DEPLOY, gasPrice: GAS_PRICE_DEFAULT } };
+}
+
+// ---- Read call: allowance --------------------------------------------------
+
+async function callErc20Allowance({ chain, contract, owner, spender }) {
+  const data = SEL.allowance + abiAddress(owner) + abiAddress(spender);
+  const hex = await ethJsonRpc(chain, 'eth_call', [{ to: contract, data }, 'latest']);
+  return BigInt(hex).toString();
+}
+
+// ---- wallet_watchAsset helpers --------------------------------------------
+
+async function watchErc20({ contract, symbol, decimals }) {
+  return state.connections.evm.request({
+    method: 'wallet_watchAsset',
+    params: { type: 'ERC20', options: { address: contract, symbol, decimals: Number(decimals) } },
+  });
+}
+async function watchErc721({ contract, tokenId }) {
+  return state.connections.evm.request({
+    method: 'wallet_watchAsset',
+    params: { type: 'ERC721', options: { address: contract, tokenId } },
+  });
+}
+async function watchErc1155({ contract, tokenId }) {
+  return state.connections.evm.request({
+    method: 'wallet_watchAsset',
+    params: { type: 'ERC1155', options: { address: contract, tokenId } },
+  });
+}
+
+// ---- Message signers -------------------------------------------------------
+
+async function signEthSign(from, hexMsg) {
+  return state.connections.evm.request({ method: 'eth_sign', params: [from, hexMsg] });
+}
+async function signPersonal(from, msg) {
+  const hex = '0x' + Array.from(new TextEncoder().encode(msg)).map(b => b.toString(16).padStart(2, '0')).join('');
+  return state.connections.evm.request({ method: 'personal_sign', params: [hex, from] });
+}
+async function signTypedDataV1(from, arr) {
+  return state.connections.evm.request({ method: 'eth_signTypedData', params: [arr, from] });
+}
+async function signTypedDataV3(from, obj) {
+  return state.connections.evm.request({ method: 'eth_signTypedData_v3', params: [from, JSON.stringify(obj)] });
+}
+async function signTypedDataV4(from, obj) {
+  return state.connections.evm.request({ method: 'eth_signTypedData_v4', params: [from, JSON.stringify(obj)] });
+}
+
+// Default payloads (each card exposes them as an editable textarea) ---------
+
+function defaultV1Payload() {
+  return [
+    { type: 'string',  name: 'Message', value: 'Hi, Alice!' },
+    { type: 'uint32',  name: 'A number', value: '1337' },
+  ];
+}
+function defaultV3Payload(chainId) {
+  return {
+    types: {
+      EIP712Domain: [
+        { name: 'name', type: 'string' },
+        { name: 'version', type: 'string' },
+        { name: 'chainId', type: 'uint256' },
+        { name: 'verifyingContract', type: 'address' },
+      ],
+      Person: [
+        { name: 'name', type: 'string' },
+        { name: 'wallet', type: 'address' },
+      ],
+      Mail: [
+        { name: 'from', type: 'Person' },
+        { name: 'to',   type: 'Person' },
+        { name: 'contents', type: 'string' },
+      ],
+    },
+    primaryType: 'Mail',
+    domain: { name: 'Ether Mail', version: '1', chainId, verifyingContract: '0xCcCCccccCCCCcCCCCCCcCcCccCcCCCcCcccccccC' },
+    message: {
+      from: { name: 'Cow',    wallet: '0xCD2a3d9F938E13CD947Ec05AbC7FE734Df8DD826' },
+      to:   { name: 'Bob',    wallet: '0xbBbBBBBbbBBBbbbBbbBbbbbBBbBbbbbBbBbbBBbB' },
+      contents: 'Hello, Bob!',
+    },
+  };
+}
+function defaultV4Payload(chainId) {
+  return {
+    types: {
+      EIP712Domain: [
+        { name: 'name', type: 'string' },
+        { name: 'version', type: 'string' },
+        { name: 'chainId', type: 'uint256' },
+        { name: 'verifyingContract', type: 'address' },
+      ],
+      Person: [
+        { name: 'name',    type: 'string' },
+        { name: 'wallets', type: 'address[]' },
+      ],
+      Mail: [
+        { name: 'from', type: 'Person' },
+        { name: 'to',   type: 'Person[]' },
+        { name: 'contents', type: 'string' },
+      ],
+      Group: [
+        { name: 'name',    type: 'string' },
+        { name: 'members', type: 'Person[]' },
+      ],
+    },
+    primaryType: 'Mail',
+    domain: { name: 'Ether Mail', version: '1', chainId, verifyingContract: '0xCcCCccccCCCCcCCCCCCcCcCccCcCCCcCcccccccC' },
+    message: {
+      from: { name: 'Cow', wallets: [
+        '0xCD2a3d9F938E13CD947Ec05AbC7FE734Df8DD826',
+        '0xDeaDbeefdEAdbeefdEadbEEFdeadbeEFdEaDbeeF',
+      ] },
+      to: [
+        { name: 'Bob', wallets: [
+          '0xbBbBBBBbbBBBbbbBbbBbbbbBBbBbbbbBbBbbBBbB',
+          '0xB0BdaBea57B0BDABeA57b0bdABEA57b0BDabEa57',
+        ] },
+      ],
+      contents: 'Hello, Bob!',
+    },
+  };
+}
+function defaultPermitPayload({ chainId, tokenContract, owner, spender }) {
+  const deadline = Math.floor(Date.now() / 1000) + 3600;
+  return {
+    types: {
+      EIP712Domain: [
+        { name: 'name', type: 'string' },
+        { name: 'version', type: 'string' },
+        { name: 'chainId', type: 'uint256' },
+        { name: 'verifyingContract', type: 'address' },
+      ],
+      Permit: [
+        { name: 'owner', type: 'address' },
+        { name: 'spender', type: 'address' },
+        { name: 'value', type: 'uint256' },
+        { name: 'nonce', type: 'uint256' },
+        { name: 'deadline', type: 'uint256' },
+      ],
+    },
+    primaryType: 'Permit',
+    domain: { name: 'USD Coin', version: '1', chainId, verifyingContract: tokenContract },
+    message: {
+      owner, spender,
+      value:    '1000000',    // 1 USDC (6 decimals)
+      nonce:    '0',
+      deadline,
+    },
+  };
+}
+function ethSignDefaultHex() {
+  // keccak256("Hello from web3-sign-test-tool") — precomputed offline.
+  return '0x879a053d4800c6354e76c7985a865d2922c82fb5b3f4577b2fe08b998954f2e0';
+}
+
+// ---- EVM Interactions: cases registry --------------------------------------
+
+// Each entry:
+//   { id, group, title, desc,
+//     action: 'tx' | 'read' | 'watch' | 'sign',
+//     fields: [{ name, label, kind: 'chain'|'text'|'textarea', defaultFrom?: (chain,evmAddr)=>string }],
+//     build?: (fieldValues) => {chain, tx} | msg params,
+//     invoke?: async (fieldValues) => any,   // for 'read'/'watch' variants
+//     needs: []                              // reserved
+//   }
+
+// Shared helpers to compute default values from chain/wallet address.
+function defTokens(chain, key) {
+  return CHAINS[chain]?.[state.network]?.tokens?.[key] || '0x0000000000000000000000000000000000000000';
+}
+function defSpender(chain)       { return defTokens(chain, 'spender'); }
+function defErc20(chain)         { return defTokens(chain, 'erc20'); }
+function defErc721(chain)        { return defTokens(chain, 'erc721'); }
+function defErc1155(chain)       { return defTokens(chain, 'erc1155'); }
+function defErc6909(chain)       { return defTokens(chain, 'erc6909'); }
+
+const CASES_EVM_TX = [
+  // ---------- ERC20 ----------
+  { id: 'erc20-create',  group: 'erc20', action: 'deploy',
+    title: 'Create Token',
+    desc: 'Deploy a Human Standard Token (paste bytecode to test real deploy; empty = minimal RETURN stub).',
+    fields: [ f_chain(), f('bytecode', 'Bytecode (0x…)', 'textarea', () => '0x') ] },
+
+  { id: 'erc20-watch',   group: 'erc20', action: 'watch',
+    title: 'Add Token to Wallet (ERC20)', desc: 'wallet_watchAsset — Binance Wallet should prompt "Add token".',
+    fields: [ f_chain(),
+              f('contract', 'Contract',  'text', c => defErc20(c)),
+              f('symbol',   'Symbol',    'text', () => 'USDC'),
+              f('decimals', 'Decimals',  'text', () => '6') ] },
+
+  { id: 'erc20-transfer', group: 'erc20', action: 'tx',
+    title: 'Transfer Tokens', desc: 'ERC20 transfer(recipient, amount).',
+    fields: [ f_chain(),
+              f('contract',  'Contract',  'text', c => defErc20(c)),
+              f('to',        'Recipient', 'text', (_, a) => a || '0x…'),
+              f('amount',    'Amount (raw)', 'text', () => '1') ] },
+
+  { id: 'erc20-approve', group: 'erc20', action: 'tx',
+    title: 'Approve Tokens', desc: 'ERC20 approve(spender, amount).',
+    fields: [ f_chain(),
+              f('contract', 'Contract',  'text', c => defErc20(c)),
+              f('spender',  'Spender',   'text', c => defSpender(c)),
+              f('amount',   'Amount (raw)', 'text', () => '1000000') ] },
+
+  { id: 'erc20-inc-allow', group: 'erc20', action: 'tx',
+    title: 'Increase Token Allowance', desc: 'increaseAllowance(spender, addedValue).',
+    fields: [ f_chain(),
+              f('contract', 'Contract', 'text', c => defErc20(c)),
+              f('spender',  'Spender',  'text', c => defSpender(c)),
+              f('added',    'Added amount', 'text', () => '1000000') ] },
+
+  { id: 'erc20-allowance', group: 'erc20', action: 'read',
+    title: 'Get Allowance', desc: 'Reads allowance(owner, spender) via eth_call.',
+    fields: [ f_chain(),
+              f('contract', 'Contract', 'text', c => defErc20(c)),
+              f('owner',    'Owner',    'text', (_, a) => a || '0x…'),
+              f('spender',  'Spender',  'text', c => defSpender(c)) ] },
+
+  { id: 'erc20-transfer-from', group: 'erc20', action: 'tx',
+    title: 'Transfer From Tokens', desc: 'transferFrom(sender, recipient, amount).',
+    fields: [ f_chain(),
+              f('contract',  'Contract', 'text', c => defErc20(c)),
+              f('sender',    'Sender',   'text', (_, a) => a || '0x…'),
+              f('recipient', 'Recipient','text', () => DEAD_ADDRESS),
+              f('amount',    'Amount (raw)', 'text', () => '1') ] },
+
+  { id: 'erc20-transfer-nogas', group: 'erc20', action: 'tx',
+    title: 'Transfer Without Gas', desc: 'Same as Transfer, but gasPrice = 1 wei (node may reject as underpriced).',
+    fields: [ f_chain(),
+              f('contract', 'Contract',  'text', c => defErc20(c)),
+              f('to',       'Recipient', 'text', (_, a) => a || '0x…'),
+              f('amount',   'Amount (raw)', 'text', () => '1') ] },
+
+  { id: 'erc20-approve-nogas', group: 'erc20', action: 'tx',
+    title: 'Approve Without Gas', desc: 'Same as Approve, but gasPrice = 1 wei.',
+    fields: [ f_chain(),
+              f('contract', 'Contract', 'text', c => defErc20(c)),
+              f('spender',  'Spender',  'text', c => defSpender(c)),
+              f('amount',   'Amount (raw)', 'text', () => '1000000') ] },
+
+  // ---------- ERC721 ----------
+  { id: 'erc721-deploy', group: 'erc721', action: 'deploy',
+    title: 'Deploy ERC721',
+    desc: 'Deploy TestDappNFTs (paste bytecode; empty = minimal stub).',
+    fields: [ f_chain(), f('bytecode', 'Bytecode (0x…)', 'textarea', () => '0x') ] },
+
+  { id: 'erc721-mint',   group: 'erc721', action: 'tx',
+    title: 'Mint',    desc: 'Calls mintNFTs() on the deployed contract.',
+    fields: [ f_chain(), f('contract', 'Contract', 'text', c => defErc721(c)) ] },
+
+  { id: 'erc721-watch', group: 'erc721', action: 'watch',
+    title: 'Watch NFT', desc: 'wallet_watchAsset type=ERC721 (single tokenId).',
+    fields: [ f_chain(),
+              f('contract', 'Contract', 'text', c => defErc721(c)),
+              f('tokenId',  'Token ID', 'text', () => '1') ] },
+
+  { id: 'erc721-watch-all', group: 'erc721', action: 'watch-all',
+    title: 'Watch all NFTs', desc: 'wallet_watchAsset without tokenId (some wallets treat as collection watch).',
+    fields: [ f_chain(), f('contract', 'Contract', 'text', c => defErc721(c)) ] },
+
+  { id: 'erc721-approve', group: 'erc721', action: 'tx',
+    title: 'Approve', desc: 'approve(spender, tokenId).',
+    fields: [ f_chain(),
+              f('contract', 'Contract', 'text', c => defErc721(c)),
+              f('spender',  'Spender',  'text', c => defSpender(c)),
+              f('tokenId',  'Token ID', 'text', () => '1') ] },
+
+  { id: 'erc721-set-approve-all', group: 'erc721', action: 'tx',
+    title: 'Set Approval For All', desc: 'setApprovalForAll(operator, true).',
+    fields: [ f_chain(),
+              f('contract', 'Contract', 'text', c => defErc721(c)),
+              f('operator', 'Operator', 'text', c => defSpender(c)) ] },
+
+  { id: 'erc721-revoke', group: 'erc721', action: 'tx',
+    title: 'Revoke (setApprovalForAll false)', desc: 'setApprovalForAll(operator, false).',
+    fields: [ f_chain(),
+              f('contract', 'Contract', 'text', c => defErc721(c)),
+              f('operator', 'Operator', 'text', c => defSpender(c)) ] },
+
+  { id: 'erc721-transfer-from', group: 'erc721', action: 'tx',
+    title: 'Transfer From', desc: 'transferFrom(from, to, tokenId).',
+    fields: [ f_chain(),
+              f('contract',  'Contract', 'text', c => defErc721(c)),
+              f('sender',    'From',     'text', (_, a) => a || '0x…'),
+              f('recipient', 'To',       'text', () => DEAD_ADDRESS),
+              f('tokenId',   'Token ID', 'text', () => '1') ] },
+
+  { id: 'erc721-sign',   group: 'erc721', action: 'sign',
+    title: 'Sign (NFT Permit)',
+    desc: 'eth_signTypedData_v4 with an ERC-4494-style Permit payload for the NFT.',
+    fields: [ f_chain(),
+              f('contract', 'Contract', 'text', c => defErc721(c)),
+              f('spender',  'Spender',  'text', c => defSpender(c)),
+              f('tokenId',  'Token ID', 'text', () => '1') ] },
+
+  { id: 'erc721-verify', group: 'erc721', action: 'note',
+    title: 'Verify (external)',
+    desc: 'Not implemented — copy the signature from Last Result and verify with etherscan verifiedSignatures or your own tool.',
+    fields: [] },
+
+  // ---------- ERC1155 ----------
+  { id: 'erc1155-deploy', group: 'erc1155', action: 'deploy',
+    title: 'Deploy ERC1155',
+    desc: 'Deploy an ERC1155 contract (paste bytecode; empty = stub).',
+    fields: [ f_chain(), f('bytecode', 'Bytecode (0x…)', 'textarea', () => '0x') ] },
+
+  { id: 'erc1155-batch-mint', group: 'erc1155', action: 'tx',
+    title: 'Batch Mint',   desc: 'mintBatch(to, ids[], amounts[], "").',
+    fields: [ f_chain(),
+              f('contract', 'Contract', 'text', c => defErc1155(c)),
+              f('to',       'Recipient','text', (_, a) => a || '0x…'),
+              f('ids',      'Token IDs (comma-sep)', 'text', () => '1,2'),
+              f('amounts',  'Amounts (comma-sep)',   'text', () => '10,20') ] },
+
+  { id: 'erc1155-batch-transfer', group: 'erc1155', action: 'tx',
+    title: 'Batch Transfer', desc: 'safeBatchTransferFrom(from, to, ids[], amounts[], "").',
+    fields: [ f_chain(),
+              f('contract',  'Contract', 'text', c => defErc1155(c)),
+              f('sender',    'From',     'text', (_, a) => a || '0x…'),
+              f('recipient', 'To',       'text', () => DEAD_ADDRESS),
+              f('ids',       'Token IDs (comma-sep)', 'text', () => '1'),
+              f('amounts',   'Amounts (comma-sep)',   'text', () => '1') ] },
+
+  { id: 'erc1155-set-approve-all', group: 'erc1155', action: 'tx',
+    title: 'Set Approval For All', desc: 'setApprovalForAll(operator, true).',
+    fields: [ f_chain(),
+              f('contract', 'Contract', 'text', c => defErc1155(c)),
+              f('operator', 'Operator', 'text', c => defSpender(c)) ] },
+
+  { id: 'erc1155-revoke', group: 'erc1155', action: 'tx',
+    title: 'Revoke', desc: 'setApprovalForAll(operator, false).',
+    fields: [ f_chain(),
+              f('contract', 'Contract', 'text', c => defErc1155(c)),
+              f('operator', 'Operator', 'text', c => defSpender(c)) ] },
+
+  { id: 'erc1155-watch', group: 'erc1155', action: 'watch',
+    title: 'Watch ERC1155 Asset', desc: 'wallet_watchAsset type=ERC1155.',
+    fields: [ f_chain(),
+              f('contract', 'Contract', 'text', c => defErc1155(c)),
+              f('tokenId',  'Token ID', 'text', () => '1') ] },
+
+  // ---------- ERC6909 (multi-token, single-contract; ERC1155 successor) ----------
+  { id: 'erc6909-transfer', group: 'erc6909', action: 'tx',
+    title: 'Transfer', desc: 'transfer(receiver, id, amount) — sender is msg.sender.',
+    fields: [ f_chain(),
+              f('contract', 'Contract', 'text', c => defErc6909(c)),
+              f('receiver', 'Receiver', 'text', (_, a) => a || '0x…'),
+              f('id',       'Token ID', 'text', () => '1'),
+              f('amount',   'Amount (raw)', 'text', () => '1') ] },
+
+  { id: 'erc6909-transfer-from', group: 'erc6909', action: 'tx',
+    title: 'Transfer From', desc: 'transferFrom(sender, receiver, id, amount).',
+    fields: [ f_chain(),
+              f('contract', 'Contract', 'text', c => defErc6909(c)),
+              f('sender',   'From',     'text', (_, a) => a || '0x…'),
+              f('receiver', 'To',       'text', () => DEAD_ADDRESS),
+              f('id',       'Token ID', 'text', () => '1'),
+              f('amount',   'Amount (raw)', 'text', () => '1') ] },
+
+  { id: 'erc6909-approve', group: 'erc6909', action: 'tx',
+    title: 'Approve', desc: 'approve(spender, id, amount) — per-ID allowance.',
+    fields: [ f_chain(),
+              f('contract', 'Contract', 'text', c => defErc6909(c)),
+              f('spender',  'Spender',  'text', c => defSpender(c)),
+              f('id',       'Token ID', 'text', () => '1'),
+              f('amount',   'Amount (raw)', 'text', () => '1000') ] },
+
+  { id: 'erc6909-set-operator', group: 'erc6909', action: 'tx',
+    title: 'Set Operator', desc: 'setOperator(operator, true) — operator can move any of your IDs.',
+    fields: [ f_chain(),
+              f('contract', 'Contract', 'text', c => defErc6909(c)),
+              f('operator', 'Operator', 'text', c => defSpender(c)) ] },
+
+  { id: 'erc6909-balance', group: 'erc6909', action: 'read',
+    title: 'Balance Of', desc: 'balanceOf(owner, id) via eth_call.',
+    fields: [ f_chain(),
+              f('contract', 'Contract', 'text', c => defErc6909(c)),
+              f('owner',    'Owner',    'text', (_, a) => a || '0x…'),
+              f('id',       'Token ID', 'text', () => '1') ] },
+
+  // ---------- EIP-747 (generic Add Token form) ----------
+  { id: 'eip747-add-token', group: 'eip747', action: 'watch',
+    title: 'Add Token (EIP-747)', desc: 'Generic wallet_watchAsset. Fill any ERC20 address, symbol, decimals.',
+    fields: [ f_chain(),
+              f('contract', 'Contract', 'text', c => defErc20(c)),
+              f('symbol',   'Symbol',   'text', () => 'USDC'),
+              f('decimals', 'Decimals', 'text', () => '6') ] },
+];
+
+// Shorthand field constructors used above.
+function f(name, label, kind, defaultFrom) { return { name, label, kind, defaultFrom }; }
+function f_chain() { return { name: 'chain', label: 'Chain', kind: 'chain' }; }
+
+// ---- EVM Message Signing: cases registry -----------------------------------
+
+const CASES_EVM_MSG = [
+  { id: 'eth-sign',      title: 'Eth Sign',           method: 'eth_sign',
+    desc: 'DEPRECATED, dangerous. Signs an arbitrary 32-byte hash; wallets should warn strongly.',
+    payloadKind: 'hex',
+    getDefault: () => ethSignDefaultHex() },
+
+  { id: 'personal-sign', title: 'Personal Sign',      method: 'personal_sign',
+    desc: 'Signs a UTF-8 message with the personal-message prefix. Most common login flow.',
+    payloadKind: 'text',
+    getDefault: () => 'Hello from web3-sign-test-tool at ' + new Date().toISOString() },
+
+  { id: 'typed-v1',      title: 'Sign Typed Data V1', method: 'eth_signTypedData',
+    desc: 'Legacy typed-data format (array of {type, name, value}).',
+    payloadKind: 'json',
+    getDefault: () => JSON.stringify(defaultV1Payload(), null, 2) },
+
+  { id: 'typed-v3',      title: 'Sign Typed Data V3', method: 'eth_signTypedData_v3',
+    desc: 'EIP-712 v3 — introduces domain + primaryType. Mail example.',
+    payloadKind: 'json',
+    getDefault: (chainId) => JSON.stringify(defaultV3Payload(chainId), null, 2) },
+
+  { id: 'typed-v4',      title: 'Sign Typed Data V4', method: 'eth_signTypedData_v4',
+    desc: 'EIP-712 v4 — current mainstream. Supports recursive/array types.',
+    payloadKind: 'json',
+    getDefault: (chainId) => JSON.stringify(defaultV4Payload(chainId), null, 2) },
+
+  { id: 'permit',        title: 'Sign Permit',        method: 'eth_signTypedData_v4',
+    desc: 'ERC20 EIP-2612 Permit — wallet should show "Approve X to spend Y USDC".',
+    payloadKind: 'json',
+    getDefault: (chainId, wallet) => JSON.stringify(defaultPermitPayload({
+      chainId,
+      tokenContract: defErc20('eth'),
+      owner: wallet || '0x0000000000000000000000000000000000000000',
+      spender: '0x000000000022D473030F116dDEE9F6B43aC78BA3',
+    }), null, 2) },
+];
+
+// ---- Rendering: EVM Interactions -------------------------------------------
+
+const EVM_CHAINS = ['bsc', 'eth', 'base'];
+
+function evmChainSelectHtml(selected = 'bsc') {
+  return `<select data-field="chain">` +
+    EVM_CHAINS.map(k => `<option value="${k}" ${k === selected ? 'selected' : ''}>${CHAINS[k].label}</option>`).join('') +
+    `</select>`;
+}
+
+function fieldToHtml(field, chain, evmAddr) {
+  const val = field.defaultFrom ? field.defaultFrom(chain, evmAddr) : '';
+  if (field.kind === 'chain')    return `<label>${field.label}: ${evmChainSelectHtml(chain)}</label>`;
+  if (field.kind === 'textarea') return `<label>${field.label}: <textarea data-field="${field.name}" rows="2">${val}</textarea></label>`;
+  return `<label>${field.label}: <input type="text" data-field="${field.name}" value="${val}"></label>`;
+}
+
+function renderEvmTxCards() {
+  const evmAddr = state.connections.evm.address || '';
+  for (const group of ['erc20', 'erc721', 'erc1155', 'erc6909', 'eip747']) {
+    const grid = document.querySelector(`#evm-tx-panel-${group} .card-grid`);
+    grid.innerHTML = '';
+    const cases = CASES_EVM_TX.filter(c => c.group === group);
+    for (const c of cases) {
+      const chain = 'bsc';
+      const card = document.createElement('div');
+      card.className = 'card';
+      card.dataset.case = c.id;
+
+      let actionsHtml = '';
+      if (c.action === 'tx') {
+        actionsHtml = `<button class="btn-preview">Preview</button><button class="primary btn-send">Sign &amp; Send</button>`;
+      } else if (c.action === 'read') {
+        actionsHtml = `<button class="primary btn-call">Call</button>`;
+      } else if (c.action === 'watch' || c.action === 'watch-all') {
+        actionsHtml = `<button class="primary btn-watch">Add to Wallet</button>`;
+      } else if (c.action === 'deploy') {
+        actionsHtml = `<button class="btn-preview">Preview</button><button class="primary btn-deploy">Deploy</button>`;
+      } else if (c.action === 'sign') {
+        actionsHtml = `<button class="primary btn-sign">Sign</button>`;
+      } else if (c.action === 'note') {
+        actionsHtml = ''; // pure info card
+      }
+
+      card.innerHTML =
+        `<div class="card-header">
+          <span class="chain-badge eth">EVM</span>
+          <span class="failure-type">${c.title}</span>
+        </div>
+        <div class="card-desc">${c.desc}</div>
+        <div class="card-params">
+          ${c.fields.map(fld => fieldToHtml(fld, chain, evmAddr)).join('')}
+        </div>
+        <div class="card-actions">${actionsHtml}</div>
+        <div class="card-status">idle</div>`;
+
+      // Wire buttons
+      const previewBtn = card.querySelector('.btn-preview');
+      const sendBtn    = card.querySelector('.btn-send');
+      const callBtn    = card.querySelector('.btn-call');
+      const watchBtn   = card.querySelector('.btn-watch');
+      const deployBtn  = card.querySelector('.btn-deploy');
+      const signBtn    = card.querySelector('.btn-sign');
+      if (previewBtn) previewBtn.addEventListener('click', () => handleEvmTxAction(c, card, 'preview'));
+      if (sendBtn)    sendBtn.addEventListener('click',    () => handleEvmTxAction(c, card, 'send'));
+      if (callBtn)    callBtn.addEventListener('click',    () => handleEvmTxAction(c, card, 'call'));
+      if (watchBtn)   watchBtn.addEventListener('click',   () => handleEvmTxAction(c, card, 'watch'));
+      if (deployBtn)  deployBtn.addEventListener('click',  () => handleEvmTxAction(c, card, 'send'));
+      if (signBtn)    signBtn.addEventListener('click',    () => handleEvmTxAction(c, card, 'sign'));
+
+      grid.appendChild(card);
+    }
+  }
+}
+
+// Build the tx or invoke the wallet action for a case, based on its `action` type.
+async function handleEvmTxAction(c, card, mode) {
+  const statusEl = card.querySelector('.card-status');
+  const setCardStatus = (msg, cls='') => { statusEl.textContent = msg; statusEl.className = 'card-status ' + cls; };
+
+  if (c.action === 'note') { setCardStatus('Info card — no action.', ''); return; }
+  if (!state.connections.evm.available) {
+    setCardStatus('EVM wallet not connected.', 'err');
+    return;
+  }
+  const fields = readCardFields(card);
+  const chain = fields.chain;
+  $('out-case').textContent = c.title + ' · ' + (chain || '');
+
+  try {
+    // Sign-typed data (ERC721 Sign card)
+    if (c.action === 'sign') {
+      const cfg = netCfg(chain);
+      const from = evmSelf();
+      const payload = {
+        types: {
+          EIP712Domain: [
+            { name: 'name', type: 'string' },
+            { name: 'version', type: 'string' },
+            { name: 'chainId', type: 'uint256' },
+            { name: 'verifyingContract', type: 'address' },
+          ],
+          Permit: [
+            { name: 'spender', type: 'address' },
+            { name: 'tokenId', type: 'uint256' },
+            { name: 'nonce',   type: 'uint256' },
+            { name: 'deadline',type: 'uint256' },
+          ],
+        },
+        primaryType: 'Permit',
+        domain: { name: 'TestDappNFTs', version: '1', chainId: cfg.chainIdDec, verifyingContract: fields.contract },
+        message: {
+          spender: fields.spender, tokenId: fields.tokenId, nonce: '0',
+          deadline: Math.floor(Date.now() / 1000) + 3600,
+        },
+      };
+      $('out-unsigned').textContent = JSON.stringify(payload, null, 2);
+      setCardStatus('Requesting eth_signTypedData_v4…');
+      await ensureEvmChain(chain);
+      const sig = await signTypedDataV4(from, payload);
+      $('out-signed').textContent = sig;
+      setCardStatus('Signed.', 'ok'); return;
+    }
+
+    // wallet_watchAsset
+    if (c.action === 'watch' || c.action === 'watch-all') {
+      await ensureEvmChain(chain);
+      $('out-unsigned').textContent = JSON.stringify(fields, null, 2);
+      setCardStatus('Calling wallet_watchAsset…');
+      let res;
+      if (c.id === 'erc20-watch' || c.id === 'eip747-add-token')
+        res = await watchErc20(fields);
+      else if (c.id === 'erc721-watch' || c.id === 'erc721-watch-all')
+        res = await watchErc721(fields);
+      else if (c.id === 'erc1155-watch')
+        res = await watchErc1155(fields);
+      $('out-signed').textContent = String(res);
+      setCardStatus('watchAsset returned: ' + res, 'ok'); return;
+    }
+
+    // Read call
+    if (c.action === 'read') {
+      $('out-unsigned').textContent = JSON.stringify(fields, null, 2);
+      setCardStatus('eth_call in progress…');
+      let val;
+      if (c.id === 'erc20-allowance')     val = 'allowance: ' + await callErc20Allowance(fields);
+      else if (c.id === 'erc6909-balance') val = 'balanceOf: ' + await callErc6909BalanceOf(fields);
+      else throw new Error('Unhandled read: ' + c.id);
+      $('out-signed').textContent = val;
+      setCardStatus('Call result: ' + val, 'ok'); return;
+    }
+
+    // Build the tx for tx/deploy actions
+    let built;
+    if (c.action === 'deploy') {
+      built = buildEvmDeploy({ chain, bytecode: fields.bytecode || '0x' });
+    } else if (c.id === 'erc20-transfer')      built = buildErc20Transfer({ chain, ...fields });
+    else if (c.id === 'erc20-approve')          built = buildErc20Approve({ chain, ...fields });
+    else if (c.id === 'erc20-inc-allow')        built = buildErc20IncreaseAllowance({ chain, ...fields });
+    else if (c.id === 'erc20-transfer-from')    built = buildErc20TransferFrom({ chain, ...fields });
+    else if (c.id === 'erc20-transfer-nogas')   built = buildErc20Transfer({ chain, ...fields, gasPrice: GAS_PRICE_LOWBALL });
+    else if (c.id === 'erc20-approve-nogas')    built = buildErc20Approve({ chain, ...fields, gasPrice: GAS_PRICE_LOWBALL });
+    else if (c.id === 'erc721-mint')            built = buildErc721Mint({ chain, ...fields });
+    else if (c.id === 'erc721-approve')         built = buildErc721Approve({ chain, ...fields });
+    else if (c.id === 'erc721-set-approve-all') built = buildErc721SetApprovalForAll({ chain, ...fields, approved: true });
+    else if (c.id === 'erc721-revoke')          built = buildErc721SetApprovalForAll({ chain, ...fields, approved: false });
+    else if (c.id === 'erc721-transfer-from')   built = buildErc721TransferFrom({ chain, ...fields });
+    else if (c.id === 'erc1155-batch-mint')     built = buildErc1155BatchMint({ chain, ...fields, ids: parseNumList(fields.ids), amounts: parseNumList(fields.amounts) });
+    else if (c.id === 'erc1155-batch-transfer') built = buildErc1155BatchTransfer({ chain, ...fields, ids: parseNumList(fields.ids), amounts: parseNumList(fields.amounts) });
+    else if (c.id === 'erc1155-set-approve-all')built = buildErc721SetApprovalForAll({ chain, ...fields, approved: true });
+    else if (c.id === 'erc1155-revoke')         built = buildErc721SetApprovalForAll({ chain, ...fields, approved: false });
+    else if (c.id === 'erc6909-transfer')       built = buildErc6909Transfer({ chain, ...fields });
+    else if (c.id === 'erc6909-transfer-from')  built = buildErc6909TransferFrom({ chain, ...fields });
+    else if (c.id === 'erc6909-approve')        built = buildErc6909Approve({ chain, ...fields });
+    else if (c.id === 'erc6909-set-operator')   built = buildErc6909SetOperator({ chain, ...fields, approved: true });
+    else throw new Error('Unhandled case: ' + c.id);
+
+    $('out-unsigned').textContent = JSON.stringify(built.tx, null, 2);
+
+    if (mode === 'preview') {
+      setCardStatus('Preview only — not sent.', 'ok');
+      $('out-signed').textContent = '(preview — no wallet call)';
+      return;
+    }
+    // Send
+    setCardStatus('Requesting wallet signature…');
+    const hash = await signEvm(chain, built.tx);
+    $('out-signed').textContent = hash;
+    setCardStatus('Tx submitted: ' + hash, 'ok');
+  } catch (e) {
+    const msg = e?.message || String(e);
+    $('out-signed').textContent = msg;
+    setCardStatus('Failed: ' + msg.slice(0, 200), 'err');
+  }
+}
+
+function parseNumList(s) {
+  return String(s || '').split(',').map(x => x.trim()).filter(Boolean).map(x => BigInt(x));
+}
+
+// ---- Rendering: EVM Message Signing ----------------------------------------
+
+function renderEvmMsgCards() {
+  const grid = $('evm-msg-grid');
+  grid.innerHTML = '';
+  const evmAddr = state.connections.evm.address || '';
+  const currentChainIdDec = state.connections.evm.chainId
+    ? parseInt(state.connections.evm.chainId, 16)
+    : CHAINS.eth[state.network].chainIdDec;
+
+  for (const c of CASES_EVM_MSG) {
+    const defaultVal = c.getDefault(currentChainIdDec, evmAddr);
+    const card = document.createElement('div');
+    card.className = 'card';
+    card.dataset.case = c.id;
+    card.innerHTML =
+      `<div class="card-header">
+        <span class="chain-badge eth">EVM</span>
+        <span class="failure-type">${c.title}</span>
+      </div>
+      <div class="card-desc">${c.desc} <br><small>RPC: <code>${c.method}</code></small></div>
+      <div class="card-params">
+        <label>Chain: ${evmChainSelectHtml('eth')}</label>
+        <label>Payload:
+          <textarea data-field="payload" rows="6">${defaultVal.replace(/</g, '&lt;')}</textarea>
+        </label>
+      </div>
+      <button class="primary btn-msg-sign">Sign</button>
+      <div class="card-status">idle</div>`;
+
+    card.querySelector('.btn-msg-sign').addEventListener('click', () => handleEvmMsgSign(c, card));
+    grid.appendChild(card);
+  }
+}
+
+async function handleEvmMsgSign(c, card) {
+  const statusEl = card.querySelector('.card-status');
+  const setCardStatus = (msg, cls='') => { statusEl.textContent = msg; statusEl.className = 'card-status ' + cls; };
+
+  if (!state.connections.evm.available) { setCardStatus('EVM wallet not connected.', 'err'); return; }
+  const chain = card.querySelector('[data-field="chain"]').value;
+  const raw   = card.querySelector('[data-field="payload"]').value;
+  $('out-case').textContent = c.title + ' · ' + chain;
+  $('out-unsigned').textContent = raw;
+
+  try {
+    await ensureEvmChain(chain);
+    const from = evmSelf();
+    setCardStatus('Requesting signature…');
+    let sig;
+    if (c.method === 'eth_sign')                sig = await signEthSign(from, raw.trim());
+    else if (c.method === 'personal_sign')      sig = await signPersonal(from, raw);
+    else if (c.method === 'eth_signTypedData')  sig = await signTypedDataV1(from, JSON.parse(raw));
+    else if (c.method === 'eth_signTypedData_v3') sig = await signTypedDataV3(from, JSON.parse(raw));
+    else if (c.method === 'eth_signTypedData_v4') sig = await signTypedDataV4(from, JSON.parse(raw));
+    else throw new Error('Unknown method: ' + c.method);
+    $('out-signed').textContent = sig;
+    setCardStatus('Signed.', 'ok');
+  } catch (e) {
+    const msg = e?.message || String(e);
+    $('out-signed').textContent = msg;
+    setCardStatus('Failed: ' + msg.slice(0, 200), 'err');
+  }
+}
+
+// ============================================================================
+// Add Custom Chain page — ported from git.toolsfdg.net/ben-t/dapp-test-tool
+// Tests wallet_addEthereumChain / wallet_switchEthereumChain flows for
+// Binance Wallet ChainList Quick Add (W3W-45527). Uses the top-level EVM
+// connection (Binance Wallet extension or WalletConnect), not its own provider.
+// ============================================================================
+
+const CUSTOM_CHAIN_PRESETS = [
+  // ---- Working RPCs ----
+  { status: 'working', label: 'Sepolia',           chainIdShort: '11155111', note: 'publicnode · safe',
+    data: { chainId: 11155111, chainName: 'Ethereum Sepolia',    rpcUrl: 'https://ethereum-sepolia-rpc.publicnode.com',
+            symbol: 'ETH', decimals: 18, explorer: 'https://sepolia.etherscan.io' } },
+  { status: 'working', label: 'Polygon Amoy',      chainIdShort: '80002',    note: 'drpc · safe',
+    data: { chainId: 80002,    chainName: 'Polygon Amoy Testnet',rpcUrl: 'https://polygon-amoy.drpc.org',
+            symbol: 'MATIC', decimals: 18, explorer: 'https://amoy.polygonscan.com' } },
+  { status: 'working', label: 'Arbitrum Nova',     chainIdShort: '42170',    note: 'publicnode · safe',
+    data: { chainId: 42170,    chainName: 'Arbitrum Nova',       rpcUrl: 'https://arbitrum-nova-rpc.publicnode.com',
+            symbol: 'ETH', decimals: 18, explorer: 'https://nova.arbiscan.io' } },
+  { status: 'working', label: 'Filecoin',          chainIdShort: '314',      note: 'drpc · safe',
+    data: { chainId: 314,      chainName: 'Filecoin Mainnet',    rpcUrl: 'https://filecoin.drpc.org',
+            symbol: 'FIL', decimals: 18, explorer: 'https://filfox.info/en' } },
+  { status: 'working', label: 'Lens',              chainIdShort: '232',      note: 'drpc · safe',
+    data: { chainId: 232,      chainName: 'Lens',                rpcUrl: 'https://lens.drpc.org',
+            symbol: 'GHO', decimals: 18, explorer: 'https://explorer.lens.xyz' } },
+  { status: 'working', label: 'ZetaChain',         chainIdShort: '7000',     note: 'drpc · safe',
+    data: { chainId: 7000,     chainName: 'ZetaChain Mainnet',   rpcUrl: 'https://zeta-chain.drpc.org',
+            symbol: 'ZETA', decimals: 18, explorer: 'https://explorer.zetachain.com' } },
+  { status: 'working', label: 'Unichain',          chainIdShort: '130',      note: 'publicnode · safe',
+    data: { chainId: 130,      chainName: 'Unichain',            rpcUrl: 'https://unichain-rpc.publicnode.com',
+            symbol: 'ETH', decimals: 18, explorer: 'https://uniscan.xyz' } },
+
+  // ---- Privacy-blocked (chainId ONLY in privacyIssueNetworks[]) ----
+  { status: 'blocked', label: 'Hyperliquid Testnet', chainIdShort: '998',  note: 'chain.link · tracking=yes',
+    blockReason: 'Only privacy RPCs in SDK data; no tracking=none alternative → wallet should refuse Save',
+    data: { chainId: 998,      chainName: 'Hyperliquid Testnet', rpcUrl: 'https://rpcs.chain.link/hyperevm/testnet',
+            symbol: 'HYPE', decimals: 18, explorer: 'https://app.hyperliquid-testnet.xyz/explorer' } },
+  { status: 'blocked', label: 'Flare',              chainIdShort: '14',   note: 'Tatum · tracking=yes',
+    blockReason: 'Only privacy RPCs in SDK data; no tracking=none alternative → wallet should refuse Save',
+    data: { chainId: 14,       chainName: 'Flare Mainnet',       rpcUrl: 'https://flare-mainnet.gateway.tatum.io',
+            symbol: 'FLR', decimals: 18, explorer: 'https://flarescan.com' } },
+  { status: 'blocked', label: 'Flow EVM',           chainIdShort: '747',  note: 'onflow · tracking=yes',
+    blockReason: 'Only privacy RPCs in SDK data; no tracking=none alternative → wallet should refuse Save',
+    data: { chainId: 747,      chainName: 'Flow EVM Mainnet',    rpcUrl: 'https://mainnet.evm.nodes.onflow.org',
+            symbol: 'FLOW', decimals: 18, explorer: 'https://evm.flowscan.io' } },
+  { status: 'blocked', label: 'Conflux eSpace',     chainIdShort: '1030', note: 'confluxrpc · tracking=yes',
+    blockReason: 'Only privacy RPCs in SDK data; no tracking=none alternative → wallet should refuse Save',
+    data: { chainId: 1030,     chainName: 'Conflux eSpace',      rpcUrl: 'https://evm.confluxrpc.com',
+            symbol: 'CFX', decimals: 18, explorer: 'https://evm.confluxscan.io' } },
+  { status: 'blocked', label: 'Canto',              chainIdShort: '7700', note: 'gravitychain · tracking=yes',
+    blockReason: 'Only privacy RPCs in SDK data; no tracking=none alternative → wallet should refuse Save',
+    data: { chainId: 7700,     chainName: 'Canto',               rpcUrl: 'https://canto.gravitychain.io',
+            symbol: 'CANTO', decimals: 18, explorer: 'https://tuber.build' } },
+  { status: 'blocked', label: 'BTTC',               chainIdShort: '199',  note: 'drpc · tracking=yes',
+    blockReason: 'Only privacy RPCs in SDK data; no tracking=none alternative → wallet should refuse Save',
+    data: { chainId: 199,      chainName: 'BitTorrent Chain Mainnet', rpcUrl: 'https://bittorrent.drpc.org',
+            symbol: 'BTT', decimals: 18, explorer: 'https://bttcscan.com' } },
+
+  // ---- Dead ----
+  { status: 'dead', label: 'Sepolia',   chainIdShort: '11155111', note: 'Alchemy demo',
+    deadReason: 'Alchemy /v2/demo no longer responds',
+    data: { chainId: 11155111, chainName: 'Ethereum Sepolia', rpcUrl: 'https://eth-sepolia.g.alchemy.com/v2/demo',
+            symbol: 'ETH', decimals: 18, explorer: 'https://sepolia.etherscan.io' } },
+  { status: 'dead', label: 'Filecoin',  chainIdShort: '314',      note: 'lava.build',
+    deadReason: 'lava.build returns blocked-provider error',
+    data: { chainId: 314,      chainName: 'Filecoin Mainnet',  rpcUrl: 'https://filecoin.lava.build',
+            symbol: 'FIL', decimals: 18, explorer: 'https://filfox.info/en' } },
+  { status: 'dead', label: 'Lens',      chainIdShort: '232',      note: 'Alchemy',
+    deadReason: 'Alchemy says LENS_MAINNET not enabled for this app',
+    data: { chainId: 232,      chainName: 'Lens',              rpcUrl: 'https://lens-mainnet.g.alchemy.com/public',
+            symbol: 'GHO', decimals: 18, explorer: 'https://explorer.lens.xyz' } },
+];
+
+function acLog(msg, level = 'info') {
+  const el = document.getElementById('ac-log');
+  if (!el) return;
+  const time = new Date().toLocaleTimeString();
+  const span = document.createElement('span');
+  span.className = level;
+  span.textContent = `[${time}] ${msg}\n`;
+  el.appendChild(span);
+  el.scrollTop = el.scrollHeight;
+}
+
+function acGetFormData() {
+  return {
+    chainId:   $('chainId').value.trim(),
+    chainName: $('chainName').value.trim(),
+    rpcUrl:    $('rpcUrl').value.trim(),
+    symbol:    $('symbol').value.trim(),
+    decimals:  Number($('decimals').value || '18'),
+    explorer:  $('explorer').value.trim(),
+  };
+}
+
+function acSetFormData(data) {
+  $('chainId').value   = data.chainId ?? '';
+  $('chainName').value = data.chainName ?? '';
+  $('rpcUrl').value    = data.rpcUrl ?? '';
+  $('symbol').value    = data.symbol ?? '';
+  $('decimals').value  = data.decimals ?? 18;
+  $('explorer').value  = data.explorer ?? '';
+}
+
+function acDecimalToHex(dec) {
+  const n = Number(dec);
+  if (!Number.isInteger(n) || n < 0) throw new Error('chainId must be a non-negative integer');
+  return '0x' + n.toString(16);
+}
+
+function renderCustomChainPresets() {
+  const groups = {
+    working: document.getElementById('presets-working'),
+    blocked: document.getElementById('presets-blocked'),
+    dead:    document.getElementById('presets-dead'),
+  };
+  if (!groups.working) return;
+  for (const g of Object.values(groups)) g.innerHTML = '';
+  for (const p of CUSTOM_CHAIN_PRESETS) {
+    const chip = document.createElement('span');
+    chip.className = `chip ${p.status}`;
+    const tip = p.deadReason  ? `${p.label} (${p.chainIdShort}) — ${p.deadReason}`
+              : p.blockReason ? `${p.label} (${p.chainIdShort}) — ${p.blockReason}`
+              : `${p.label} (${p.chainIdShort}) via ${p.note}`;
+    chip.title = tip;
+    chip.innerHTML = `${p.label} <span class="chip-meta">${p.chainIdShort} · ${p.note}</span>`;
+    chip.onclick = () => {
+      acSetFormData(p.data);
+      const tag = `[${p.status}]`;
+      const extra = p.status === 'blocked' ? ' — wallet should refuse to save'
+                  : p.status === 'dead'    ? ' — RPC unreachable'
+                  : '';
+      acLog(`Loaded preset ${tag}: ${p.label} (${p.chainIdShort}) — ${p.note}${extra}`);
+    };
+    groups[p.status].appendChild(chip);
+  }
+}
+
+function acRequireEvm() {
+  if (!state.connections.evm.available || !state.connections.evm.request) {
+    acLog("Not connected. Click 'Connect Binance Wallet' or 'Connect WalletConnect' in the top wallet section first.", 'err');
+    return null;
+  }
+  return state.connections.evm;
+}
+
+async function acAddChain() {
+  const evm = acRequireEvm(); if (!evm) return;
+  const f = acGetFormData();
+  if (!f.chainId || !f.chainName || !f.rpcUrl || !f.symbol) {
+    acLog('Please fill chainId / chainName / rpcUrl / symbol.', 'err'); return;
+  }
+  try {
+    const params = {
+      chainId: acDecimalToHex(f.chainId),
+      chainName: f.chainName,
+      rpcUrls: [f.rpcUrl],
+      nativeCurrency: { name: f.symbol, symbol: f.symbol, decimals: f.decimals },
+      ...(f.explorer ? { blockExplorerUrls: [f.explorer] } : {}),
+    };
+    acLog(`→ wallet_addEthereumChain ${JSON.stringify(params, null, 2)}`);
+    const result = await evm.request({ method: 'wallet_addEthereumChain', params: [params] });
+    acLog(`← OK: ${JSON.stringify(result)}`, 'ok');
+  } catch (e) {
+    acLog(`addChain rejected/failed: code=${e?.code} msg=${e?.message || e}`, 'err');
+  }
+}
+
+async function acSwitchOrAdd() {
+  const evm = acRequireEvm(); if (!evm) return;
+  const f = acGetFormData();
+  if (!f.chainId || !f.chainName || !f.rpcUrl || !f.symbol) {
+    acLog('Please fill chainId / chainName / rpcUrl / symbol (full info needed for fallback).', 'err'); return;
+  }
+  const hex = acDecimalToHex(f.chainId);
+  const addParams = {
+    chainId: hex, chainName: f.chainName, rpcUrls: [f.rpcUrl],
+    nativeCurrency: { name: f.symbol, symbol: f.symbol, decimals: f.decimals },
+    ...(f.explorer ? { blockExplorerUrls: [f.explorer] } : {}),
+  };
+  try {
+    acLog(`→ wallet_switchEthereumChain { chainId: ${hex} } (${f.chainId})`);
+    const r = await evm.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: hex }] });
+    acLog(`← switch OK: ${JSON.stringify(r)}`, 'ok');
+  } catch (e) {
+    acLog(`switch failed: code=${e?.code} msg=${e?.message}`, 'err');
+    const unknown = e?.code === 4902 || e?.code === -32603 || /unrecognized|unknown|not added/i.test(e?.message || '');
+    if (!unknown) { acLog('Not a 4902/unknown-chain error → not falling back.', 'err'); return; }
+    acLog('4902 / unknown chain detected → falling back to wallet_addEthereumChain with full info...');
+    try {
+      acLog(`→ wallet_addEthereumChain ${JSON.stringify(addParams, null, 2)}`);
+      const ar = await evm.request({ method: 'wallet_addEthereumChain', params: [addParams] });
+      acLog(`← add OK: ${JSON.stringify(ar)}`, 'ok');
+    } catch (e2) {
+      acLog(`add fallback rejected/failed: code=${e2?.code} msg=${e2?.message}`, 'err');
+    }
+  }
+}
+
+async function acSwitchOnly() {
+  const evm = acRequireEvm(); if (!evm) return;
+  const f = acGetFormData();
+  if (!f.chainId) { acLog('Please fill chainId.', 'err'); return; }
+  try {
+    const hex = acDecimalToHex(f.chainId);
+    acLog(`→ wallet_switchEthereumChain { chainId: ${hex} }  (${f.chainId})`);
+    const r = await evm.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: hex }] });
+    acLog(`← OK: ${JSON.stringify(r)}`, 'ok');
+  } catch (e) {
+    acLog(`switchChain rejected/failed: code=${e?.code} msg=${e?.message}`, 'err');
+    if (e?.code === 4902) acLog('Code 4902 means the chain is unknown. Wallet should prompt to add it.');
+  }
+}
+
+async function acGetChainId() {
+  const evm = acRequireEvm(); if (!evm) return;
+  try {
+    const cid = await evm.request({ method: 'eth_chainId' });
+    acLog(`Current chainId: ${cid} (${parseInt(cid, 16)})`, 'ok');
+  } catch (e) {
+    acLog(`eth_chainId failed: ${e?.message}`, 'err');
+  }
+}
+
+async function acProbe() {
+  const evm = acRequireEvm(); if (!evm) return;
+  try {
+    const accs = await evm.request({ method: 'eth_accounts' });
+    if (Array.isArray(accs) && accs.length > 0) acLog(`Probe: still connected → ${accs[0]}`, 'ok');
+    else acLog(`Probe: NOT connected (eth_accounts returned [])`, 'err');
+  } catch (e) {
+    acLog(`Probe failed: code=${e?.code} msg=${e?.message}`, 'err');
+  }
+}
+
+// Auto-probe state
+let acAutoProbeTimer = null;
+let acAutoProbeStart = null;
+let acAutoProbeCount = 0;
+
+function acToggleAutoProbe() {
+  const btn = $('ac-autoProbeBtn');
+  if (acAutoProbeTimer) {
+    clearInterval(acAutoProbeTimer);
+    acAutoProbeTimer = null;
+    const elapsed = Math.round((Date.now() - acAutoProbeStart) / 1000);
+    acLog(`Auto-probe stopped after ${elapsed}s, ${acAutoProbeCount} polls.`);
+    btn.textContent = 'Auto-probe every 30s (start)';
+    return;
+  }
+  const evm = acRequireEvm(); if (!evm) return;
+  acAutoProbeStart = Date.now();
+  acAutoProbeCount = 0;
+  btn.textContent = 'Auto-probe (stop)';
+  acLog('Auto-probe started — polling eth_accounts every 30s. Will alert on first [].');
+  const tick = async () => {
+    acAutoProbeCount++;
+    const elapsed = Math.round((Date.now() - acAutoProbeStart) / 1000);
+    try {
+      const accs = await state.connections.evm.request({ method: 'eth_accounts' });
+      if (Array.isArray(accs) && accs.length > 0) {
+        acLog(`[+${elapsed}s] probe #${acAutoProbeCount}: alive (${accs[0].slice(0, 10)}…)`);
+      } else {
+        acLog(`[+${elapsed}s] probe #${acAutoProbeCount}: ✗ session dropped (eth_accounts=[])`, 'err');
+        clearInterval(acAutoProbeTimer);
+        acAutoProbeTimer = null;
+        btn.textContent = 'Auto-probe every 30s (start)';
+      }
+    } catch (e) {
+      acLog(`[+${elapsed}s] probe #${acAutoProbeCount}: error code=${e?.code} msg=${e?.message}`, 'err');
+      clearInterval(acAutoProbeTimer);
+      acAutoProbeTimer = null;
+      btn.textContent = 'Auto-probe every 30s (start)';
+    }
+  };
+  tick();
+  acAutoProbeTimer = setInterval(tick, 30000);
+}
+
+function acForceReload() {
+  acLog('→ Reloading page in 1s (verify wallet upstream reports disconnect via sendBeacon)');
+  setTimeout(() => location.reload(), 1000);
+}
+
+function acClearLog() {
+  const el = document.getElementById('ac-log');
+  if (el) el.textContent = 'Cleared.\n';
+}
+
+// ---------- Legacy page: Solana Authority Changes ---------------------------
+
+// Hand-built SetAuthority instruction — avoids pulling spl-token through CDN.
+// Layout: u8 op=6 | u8 authorityType | u8 COption flag=1 | 32B new_authority.
+function createSetAuthorityIx(tokenAccount, currentAuthority, authorityType, newAuthority, programId) {
+  const data = new Uint8Array(35);
+  data[0] = 6;
+  data[1] = authorityType;
+  data[2] = 1;
+  data.set(newAuthority.toBytes(), 3);
+  return new TransactionInstruction({
+    keys: [
+      { pubkey: tokenAccount,     isSigner: false, isWritable: true },
+      { pubkey: currentAuthority, isSigner: true,  isWritable: false },
+    ],
+    programId,
+    data,
+  });
+}
+
+async function tryFetchTokenAccounts(url, pk) {
+  const conn = new Connection(url, 'confirmed');
+  const [spl, t22] = await Promise.all([
+    conn.getParsedTokenAccountsByOwner(pk, { programId: TOKEN_PROGRAM_ID }),
+    conn.getParsedTokenAccountsByOwner(pk, { programId: TOKEN_2022_PROGRAM_ID }),
+  ]);
+  return { spl, t22 };
 }
 
 function toRow(pubkey, account, program) {
@@ -251,27 +2637,51 @@ function toRow(pubkey, account, program) {
     decimals: amt.decimals,
     uiAmount: amt.uiAmount,
     uiAmountString: amt.uiAmountString,
-    program, // 'spl' | 't22'
+    program,
   };
 }
 
-function short(s, n=6) { return s.slice(0, n) + '…' + s.slice(-4); }
+async function loadTokenAccounts() {
+  const pk = state.connections.sol.publicKey;
+  if (!pk) return;
+  const cfg = netCfg('sol');
+  const failures = [];
+  for (const url of cfg.rpcs) {
+    try {
+      const { spl, t22 } = await tryFetchTokenAccounts(url, pk);
+      const rows = [];
+      for (const { pubkey, account } of spl.value) rows.push(toRow(pubkey, account, 'spl'));
+      for (const { pubkey, account } of t22.value) rows.push(toRow(pubkey, account, 't22'));
+      rows.sort((a, b) => (b.uiAmount || 0) - (a.uiAmount || 0) || a.mint.localeCompare(b.mint));
+      state.legacy.tokenAccounts = rows;
+      populatePicker('owner-pick');
+      populatePicker('close-pick');
+      console.log(`[legacy] loaded ${rows.length} token accounts via ${url}`);
+      return;
+    } catch (e) {
+      failures.push(`${url} → ${(e?.message || String(e)).slice(0, 100)}`);
+    }
+  }
+  console.warn('[legacy] token-account fetch failed:', failures);
+}
 
 function populatePicker(id) {
   const sel = $(id);
+  if (!sel) return;
   sel.innerHTML = '';
+  const rows = state.legacy.tokenAccounts;
   const blank = document.createElement('option');
   blank.value = '';
-  blank.textContent = state.tokenAccounts.length ? '-- select a token account --' : '(no token accounts found)';
+  blank.textContent = rows.length ? '-- select a token account --' : '(no token accounts found)';
   sel.appendChild(blank);
-  for (const r of state.tokenAccounts) {
+  for (const r of rows) {
     const opt = document.createElement('option');
     opt.value = r.pubkey;
     opt.dataset.program = r.program;
     opt.textContent = `${r.uiAmountString} · mint ${short(r.mint)} · ata ${short(r.pubkey)} · ${r.program === 't22' ? 'Token-2022' : 'SPL'}`;
     sel.appendChild(opt);
   }
-  sel.disabled = state.tokenAccounts.length === 0;
+  sel.disabled = rows.length === 0;
 }
 
 function onPick(prefix) {
@@ -280,152 +2690,179 @@ function onPick(prefix) {
   if (!v) return;
   $(`${prefix}-tokenAccount`).value = v;
   const program = sel.selectedOptions[0]?.dataset.program;
-  const programSelect = $(`${prefix}-program`);
-  programSelect.value = program === 't22'
+  $(`${prefix}-program`).value = program === 't22'
     ? 'TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb'
     : 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA';
 }
 
-function onDisconnect() {
-  state.provider = null; state.publicKey = null;
-  setStatus('Disconnected');
-  $('connect').disabled = false; $('disconnect').disabled = true;
-  $('signOnly').disabled = true; $('signAndSend').disabled = true;
+function updateLegacyButtons() {
+  const canSign = state.connections.sol.available;
+  $('legacy-signOnly').disabled = !canSign;
+  $('legacy-signAndSend').disabled = !canSign;
 }
 
-async function disconnect() {
-  try { await state.provider?.disconnect?.(); } catch {}
-  onDisconnect();
-}
-
-// Hand-built SetAuthority instruction — avoids pulling spl-token through CDN.
-// Layout: u8 op=6 | u8 authorityType | u8 COption flag=1 | 32B new_authority.
-function createSetAuthorityIx(tokenAccount, currentAuthority, authorityType, newAuthority, programId) {
-  const data = new Uint8Array(35);
-  data[0] = 6;               // SetAuthority discriminator
-  data[1] = authorityType;   // 2 = AccountOwner, 3 = CloseAccount
-  data[2] = 1;               // COption::Some
-  data.set(newAuthority.toBytes(), 3);
-  return new TransactionInstruction({
-    keys: [
-      { pubkey: tokenAccount,     isSigner: false, isWritable: true },
-      { pubkey: currentAuthority, isSigner: true,  isWritable: false },
-    ],
-    programId,
-    data,
-  });
-}
-
-async function fetchBlockhashWithFallback() {
-  const primary = $('rpc').value.trim();
-  const order = [primary, ...RPC_CANDIDATES.filter(u => u !== primary)].filter(Boolean);
-  const failures = [];
-  for (const url of order) {
-    try {
-      const conn = new Connection(url, 'confirmed');
-      const { blockhash } = await conn.getLatestBlockhash('confirmed');
-      state.conn = conn;
-      $('rpc').value = url;
-      return { blockhash, url };
-    } catch (e) {
-      const msg = (e?.message || String(e)).split('\n')[0].slice(0, 140);
-      failures.push(`${url} → ${msg}`);
-      console.warn('[rpc blockhash]', url, 'failed:', e);
-    }
-  }
-  console.group('getLatestBlockhash RPC fallback — all candidates failed');
-  failures.forEach(f => console.log(f));
-  console.groupEnd();
-  throw new Error(
-    `All ${order.length} RPCs blocked getLatestBlockhash. Paste a custom RPC URL (e.g. Helius free tier) and retry. See console for per-RPC errors.`
-  );
-}
-
-async function buildTx() {
-  if (!state.publicKey) throw new Error('wallet not connected');
-  const signer = state.publicKey;
+async function buildLegacyTx() {
+  const signer = state.connections.sol.publicKey;
+  if (!signer) throw new Error('Solana wallet not connected');
   const tx = new Transaction();
   tx.feePayer = signer;
+  const mode = state.legacy.mode;
 
-  if (state.mode === 'owner' || state.mode === 'close') {
-    const prefix = state.mode;
+  if (mode === 'owner' || mode === 'close') {
+    const prefix = mode;
     const tokenAccount = new PublicKey($(`${prefix}-tokenAccount`).value.trim());
     const newAuthority = new PublicKey($(`${prefix}-newAuthority`).value.trim());
     const programId    = new PublicKey($(`${prefix}-program`).value);
-    const authorityType = state.mode === 'owner' ? 2 : 3;
+    const authorityType = mode === 'owner' ? 2 : 3;
     tx.add(createSetAuthorityIx(tokenAccount, signer, authorityType, newAuthority, programId));
-  } else if (state.mode === 'assign') {
+  } else if (mode === 'assign') {
     const newProgramId = new PublicKey($('assign-program').value.trim());
     tx.add(SystemProgram.assign({ accountPubkey: signer, programId: newProgramId }));
+  } else {
+    throw new Error('Unknown legacy mode: ' + mode);
   }
 
-  const { blockhash, url } = await fetchBlockhashWithFallback();
-  tx.recentBlockhash = blockhash;
-  setStatus('Got blockhash via ' + url + '. Requesting wallet signature…');
+  tx.recentBlockhash = await getSolBlockhash();
   return tx;
 }
 
-function b64(bytes) {
-  const u8 = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
-  let s = '';
-  for (let i = 0; i < u8.length; i++) s += String.fromCharCode(u8[i]);
-  return btoa(s);
-}
-
-async function doSignOnly() {
+async function legacySignOnly() {
   try {
     setStatus('Building transaction…');
-    const tx = await buildTx();
+    const tx = await buildLegacyTx();
+    $('out-case').textContent = 'Legacy · ' + state.legacy.mode;
     $('out-unsigned').textContent = b64(tx.serialize({ requireAllSignatures: false }));
     setStatus('Requesting signature from wallet…');
-    const signed = await state.provider.signTransaction(tx);
+    const signed = await state.connections.sol.signTransaction(tx);
     $('out-signed').textContent = b64(signed.serialize({ requireAllSignatures: false }));
-    $('out-sig').textContent = '(not broadcast)';
     setStatus('Signed. Wallet should have called parse-transaction during the prompt.', 'ok');
   } catch (e) {
-    setStatus('Sign failed: ' + (e?.message || e), 'err');
+    const msg = e?.message || String(e);
+    setStatus('Sign failed: ' + msg, 'err');
+    $('out-signed').textContent = msg;
   }
 }
 
-async function doSignAndSend() {
-  if (state.mode === 'assign') {
-    const ok = confirm('⚠️ System Assign irreversibly changes the owner of your wallet account on mainnet. Really broadcast?');
-    if (!ok) return;
-  } else {
-    const ok = confirm('You are about to broadcast a SetAuthority transaction on mainnet — authority will actually change. Continue?');
-    if (!ok) return;
-  }
+async function legacySignAndSend() {
+  const mode = state.legacy.mode;
+  const warn = mode === 'assign'
+    ? '⚠️ System Assign irreversibly changes the owner of your wallet account on mainnet. Really broadcast?'
+    : 'You are about to broadcast a SetAuthority transaction — authority will actually change. Continue?';
+  if (!confirm(warn)) return;
   try {
     setStatus('Building transaction…');
-    const tx = await buildTx();
+    const tx = await buildLegacyTx();
+    $('out-case').textContent = 'Legacy · ' + mode;
     $('out-unsigned').textContent = b64(tx.serialize({ requireAllSignatures: false }));
     setStatus('Requesting signature + send from wallet…');
-    const res = await state.provider.signAndSendTransaction(tx);
-    const sig = typeof res === 'string' ? res : (res?.signature ?? JSON.stringify(res));
-    $('out-sig').textContent = sig;
+
+    let sig;
+    if (state.connectionType === 'binance' && state.connections.sol.raw?.signAndSendTransaction) {
+      const res = await state.connections.sol.raw.signAndSendTransaction(tx);
+      sig = typeof res === 'string' ? res : (res?.signature ?? JSON.stringify(res));
+    } else {
+      // WalletConnect path (or Binance without signAndSend): sign locally, then submit via RPC.
+      const signed = await state.connections.sol.signTransaction(tx);
+      const cfg = netCfg('sol');
+      sig = await withRpcFallback(cfg.rpcs, async (url) => {
+        const conn = new Connection(url, 'confirmed');
+        return conn.sendRawTransaction(signed.serialize());
+      });
+    }
+    $('out-signed').textContent = sig;
     setStatus('Broadcast. Signature: ' + sig, 'ok');
   } catch (e) {
-    setStatus('Send failed: ' + (e?.message || e), 'err');
+    const msg = e?.message || String(e);
+    setStatus('Send failed: ' + msg, 'err');
+    $('out-signed').textContent = msg;
   }
 }
 
-document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => {
-  document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
-  document.querySelectorAll('.panel').forEach(x => x.classList.remove('active'));
-  t.classList.add('active');
-  state.mode = t.dataset.mode;
-  $(`panel-${state.mode}`).classList.add('active');
-}));
+// ---------- Page switching (sidebar) ----------------------------------------
 
-$('connect').addEventListener('click', connect);
-$('disconnect').addEventListener('click', disconnect);
-$('signOnly').addEventListener('click', doSignOnly);
-$('signAndSend').addEventListener('click', doSignAndSend);
-$('owner-pick').addEventListener('change', () => onPick('owner'));
-$('close-pick').addEventListener('change', () => onPick('close'));
-document.querySelectorAll('button.reload').forEach(b => {
-  b.addEventListener('click', () => loadTokenAccounts().catch(e => setStatus('Reload failed: ' + (e?.message || e), 'err')));
-});
+let currentPage = 'sim';
+function switchPage(page) {
+  currentPage = page;
+  document.querySelectorAll('.nav-item').forEach(b => b.classList.toggle('active', b.dataset.page === page));
+  document.querySelectorAll('.page').forEach(p => p.classList.toggle('active', p.id === `page-${page}`));
+  if (page === 'legacy' && state.connections.sol.available && state.legacy.tokenAccounts.length === 0) {
+    loadTokenAccounts().catch(() => {});
+  }
+}
+
+// ---------- Init ------------------------------------------------------------
+
+function init() {
+  const savedProjectId = localStorage.getItem('wcProjectId');
+  if (savedProjectId) $('wc-project-id').value = savedProjectId;
+
+  $('network').addEventListener('change', (e) => {
+    state.network = e.target.value;
+    refreshChainGrid();
+    // EVM tx / msg cards embed contract addresses that differ per network — re-render.
+    renderEvmTxCards();
+    renderEvmMsgCards();
+    if (state.connections.evm.available || state.connections.sol.available || state.connections.tron.available) {
+      refreshBalances().catch(() => {});
+      if (state.connections.sol.available) loadTokenAccounts().catch(() => {});
+    }
+  });
+  $('connect-binance').addEventListener('click', connectBinance);
+  $('connect-wc').addEventListener('click', connectWalletConnect);
+  $('disconnect').addEventListener('click', disconnect);
+  $('diagnose').addEventListener('click', diagnose);
+
+  // Sidebar navigation
+  document.querySelectorAll('.nav-item').forEach(btn => {
+    btn.addEventListener('click', () => switchPage(btn.dataset.page));
+  });
+
+  // Legacy tabs
+  document.querySelectorAll('#legacy-tabs .tab').forEach(t => t.addEventListener('click', () => {
+    document.querySelectorAll('#legacy-tabs .tab').forEach(x => x.classList.remove('active'));
+    document.querySelectorAll('#legacy .panel').forEach(x => x.classList.remove('active'));
+    t.classList.add('active');
+    state.legacy.mode = t.dataset.mode;
+    $(`panel-${state.legacy.mode}`).classList.add('active');
+  }));
+  $('owner-pick').addEventListener('change', () => onPick('owner'));
+  $('close-pick').addEventListener('change', () => onPick('close'));
+  document.querySelectorAll('#legacy button.reload').forEach(b => {
+    b.addEventListener('click', () => loadTokenAccounts().catch(e => setStatus('Reload failed: ' + (e?.message || e), 'err')));
+  });
+  $('legacy-signOnly').addEventListener('click', legacySignOnly);
+  $('legacy-signAndSend').addEventListener('click', legacySignAndSend);
+
+  // EVM Interactions sub-tabs (ERC20 / ERC721 / ERC1155 / EIP-747)
+  document.querySelectorAll('#evm-tx-tabs .tab').forEach(t => t.addEventListener('click', () => {
+    document.querySelectorAll('#evm-tx-tabs .tab').forEach(x => x.classList.remove('active'));
+    document.querySelectorAll('#evm-tx .panel').forEach(x => x.classList.remove('active'));
+    t.classList.add('active');
+    document.getElementById(`evm-tx-panel-${t.dataset.group}`).classList.add('active');
+  }));
+
+  // Add Custom Chain page
+  renderCustomChainPresets();
+  $('ac-addChainBtn').addEventListener('click', acAddChain);
+  $('ac-switchOrAddBtn').addEventListener('click', acSwitchOrAdd);
+  $('ac-switchChainBtn').addEventListener('click', acSwitchOnly);
+  $('ac-getChainBtn').addEventListener('click', acGetChainId);
+  $('ac-probeBtn').addEventListener('click', acProbe);
+  $('ac-autoProbeBtn').addEventListener('click', acToggleAutoProbe);
+  $('ac-forceReloadBtn').addEventListener('click', acForceReload);
+  $('ac-clearLogBtn').addEventListener('click', acClearLog);
+
+  renderCards();
+  renderEvmTxCards();
+  renderEvmMsgCards();
+  refreshChainGrid();
+  updateLegacyButtons();
+
+  // Log detected wallet globals immediately so users can see injection status.
+  console.log('[init] wallet globals at load:', detectBinanceGlobals());
+}
+
+init();
 </script>
 </body>
 </html>
