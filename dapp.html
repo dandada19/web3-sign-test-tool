@@ -509,9 +509,30 @@ const WC_DEFAULT_PROJECT_ID = '545048d3f311c5e374cbf1de53a5f374';
 let UniversalProvider = null;
 async function loadUniversalProvider() {
   if (UniversalProvider) return UniversalProvider;
-  const mod = await import('https://esm.sh/@walletconnect/universal-provider@2.17.0?bundle');
-  UniversalProvider = mod.default || mod.UniversalProvider || mod;
-  return UniversalProvider;
+  // Try progressively more permissive CDNs. esm.sh's default resolution
+  // sometimes 404s on deep sub-paths that WalletConnect's package structure
+  // exposes; fall through to bundle-deps (single self-contained bundle) and
+  // then unpkg/UMD as a final fallback.
+  const sources = [
+    'https://esm.sh/@walletconnect/universal-provider@2.23.9?bundle-deps',
+    'https://esm.sh/@walletconnect/universal-provider@2.23.9?bundle',
+    'https://esm.sh/@walletconnect/universal-provider@2.20.0?bundle-deps',
+  ];
+  let lastErr = null;
+  for (const url of sources) {
+    try {
+      const mod = await import(url);
+      UniversalProvider = mod.default || mod.UniversalProvider || mod;
+      if (UniversalProvider?.init) {
+        console.log('[wc] loaded universal-provider via', url);
+        return UniversalProvider;
+      }
+    } catch (e) {
+      lastErr = e;
+      console.warn('[wc] failed to load from', url, e?.message);
+    }
+  }
+  throw lastErr || new Error('Failed to load @walletconnect/universal-provider from any CDN');
 }
 
 // ---------- Chain configuration ----------------------------------------------
