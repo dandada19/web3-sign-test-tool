@@ -137,7 +137,18 @@
   .form-row { margin: 10px 0; }
   .form-row label { display: block; font-size: 0.85em; color: #555; margin-bottom: 4px; font-weight: 500; }
   .form-row .hint { font-size: 0.75em; color: #888; margin-top: 4px; }
+
+/* WalletConnect pairing QR */
+.wc-qr { margin: 8px 0 12px; padding: 12px; border: 1px solid #ddd; border-radius: 8px; background: #fff; text-align: center; }
+.wc-qr canvas { image-rendering: pixelated; image-rendering: crisp-edges; border-radius: 4px; }
+.wc-qr p { margin: 8px 0 0; font-size: 0.78em; color: #666; }
+.wc-qr[hidden] { display: none; }
 </style>
+<!-- QR rendering for WalletConnect pairing URI. UMD build, exposes window.qrcode.
+     Loaded as a normal (non-module) script so it is ready before the deferred
+     module below runs. Failure is non-fatal: URI text + clipboard still work. -->
+<script src="https://unpkg.com/qrcode-generator@1.4.4/qrcode.js"
+        onerror="console.warn('[wc] qrcode-generator failed to load; falling back to URI text')"></script>
 </head>
 <body>
 
@@ -187,6 +198,10 @@
     <section id="wallet">
       <h2>Connect Wallet</h2>
       <div id="status" class="status">Not connected</div>
+      <div id="wc-qr" class="wc-qr" hidden>
+        <canvas id="wc-qr-canvas" width="240" height="240"></canvas>
+        <p>Scan with a WalletConnect-compatible wallet. URI also copied to clipboard.</p>
+      </div>
       <div class="toolbar">
         <button id="connect-binance" class="primary">Connect Binance Wallet</button>
         <button id="connect-wc">Connect WalletConnect</button>
@@ -513,10 +528,14 @@ async function loadUniversalProvider() {
   // sometimes 404s on deep sub-paths that WalletConnect's package structure
   // exposes; fall through to bundle-deps (single self-contained bundle) and
   // then unpkg/UMD as a final fallback.
+  // 2.20.0?bundle-deps is the sweet spot: 2.23.x pulls in `ox` whose deep
+  // sub-paths esm.sh cannot resolve; 2.17.x has the relay-auth 404. Order by
+  // known-good first, then try newer as a best-effort in case esm.sh fixes
+  // upstream layout resolution.
   const sources = [
+    'https://esm.sh/@walletconnect/universal-provider@2.20.0?bundle-deps',
     'https://esm.sh/@walletconnect/universal-provider@2.23.9?bundle-deps',
     'https://esm.sh/@walletconnect/universal-provider@2.23.9?bundle',
-    'https://esm.sh/@walletconnect/universal-provider@2.20.0?bundle-deps',
   ];
   let lastErr = null;
   for (const url of sources) {
@@ -874,6 +893,46 @@ async function connectBinance() {
 
 // ---------- Wallet: WalletConnect -------------------------------------------
 
+// Render the WalletConnect pairing URI as a scannable QR (graceful fallback to
+// URI text if the qrcode-generator lib failed to load). typeNumber 0 = auto-pick
+// the smallest QR that fits; ECC level 'M' balances density and resilience.
+function renderWcQr(uri) {
+  const wrap = $('wc-qr');
+  const canvas = $('wc-qr-canvas');
+  if (!wrap || !canvas || !window.qrcode) { wrap && (wrap.hidden = true); return; }
+  try {
+    const qr = qrcode(0, 'M');
+    qr.addData(uri);
+    qr.make();
+    const count = qr.getModuleCount();
+    const QUIET = 4; // modules of quiet zone on each side
+    const cell = Math.max(2, Math.floor(canvas.width / (count + QUIET * 2)));
+    const total = cell * (count + QUIET * 2);
+    canvas.width = canvas.height = total;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(0, 0, total, total);
+    const off = cell * QUIET;
+    for (let r = 0; r < count; r++) {
+      for (let c = 0; c < count; c++) {
+        if (qr.isDark(r, c)) {
+          ctx.fillStyle = '#000';
+          ctx.fillRect(off + c * cell, off + r * cell, cell, cell);
+        }
+      }
+    }
+    wrap.hidden = false;
+  } catch (e) {
+    console.warn('[wc] QR render failed, falling back to URI text', e);
+    wrap.hidden = true;
+  }
+}
+
+function hideWcQr() {
+  const wrap = $('wc-qr');
+  if (wrap) wrap.hidden = true;
+}
+
 async function connectWalletConnect() {
   try {
     // Priority: input box > saved localStorage > hardcoded team default.
@@ -911,8 +970,10 @@ async function connectWalletConnect() {
     const tronChainKey = state.network === 'testnet' ? 'tron:0xcd8690dc' : 'tron:0x2b6653dc';
 
     provider.on?.('display_uri', (uri) => {
+      renderWcQr(uri);
       $('status').innerHTML =
-        `Scan with a WalletConnect-compatible wallet: <code style="word-break:break-all;font-size:0.75em">${uri}</code>`;
+        `Scan with a WalletConnect-compatible wallet (URI copied to clipboard): ` +
+        `<code style="word-break:break-all;font-size:0.75em">${uri}</code>`;
       try { navigator.clipboard?.writeText(uri); } catch {}
     });
 
@@ -1072,6 +1133,7 @@ async function disconnect() {
   $('connect-binance').disabled = false;
   $('connect-wc').disabled = false;
   $('disconnect').disabled = true;
+  hideWcQr();
   setStatus('Disconnected');
   refreshChainGrid();
   populatePicker('owner-pick');
