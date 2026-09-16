@@ -2340,16 +2340,34 @@ function parseNumList(s) {
 
 // ---- Rendering: EVM Message Signing ----------------------------------------
 
+// Rewrite a JSON payload's EIP-712 domain.chainId to match the card's Chain
+// picker. Returns the updated object, or null when there's nothing to do —
+// not JSON, no domain.chainId, or a non-numeric chainId (a hand-edited string
+// or deliberately mismatched chain, which the user owns; leave it alone).
+function syncDomainChainId(raw, chain) {
+  let obj;
+  try { obj = JSON.parse(raw); } catch { return null; }
+  if (!obj?.domain || typeof obj.domain.chainId !== 'number') return null;
+  const next = netCfg(chain).chainIdDec;
+  if (obj.domain.chainId === next) return null;
+  obj.domain.chainId = next;
+  return obj;
+}
+
 function renderEvmMsgCards() {
   const grid = $('evm-msg-grid');
   grid.innerHTML = '';
   const evmAddr = state.connections.evm.address || '';
-  const currentChainIdDec = state.connections.evm.chainId
+  // Start the cards on the chain we're actually connected to. These payloads
+  // bake chainId in at render time, so defaulting elsewhere hands the wallet a
+  // domain/chain mismatch the moment the user signs.
+  const connectedChainId = state.connections.evm.chainId
     ? parseInt(state.connections.evm.chainId, 16)
-    : CHAINS.eth[state.network].chainIdDec;
+    : null;
+  const pickedChain = EVM_CHAINS.find(k => netCfg(k).chainIdDec === connectedChainId) || 'eth';
 
   for (const c of CASES_EVM_MSG) {
-    const defaultVal = c.getDefault(currentChainIdDec, evmAddr);
+    const defaultVal = c.getDefault(connectedChainId ?? netCfg(pickedChain).chainIdDec, evmAddr);
     const card = document.createElement('div');
     card.className = 'card';
     card.dataset.case = c.id;
@@ -2360,7 +2378,7 @@ function renderEvmMsgCards() {
       </div>
       <div class="card-desc">${c.desc} <br><small>RPC: <code>${c.method}</code></small></div>
       <div class="card-params">
-        <label>Chain: ${evmChainSelectHtml('eth')}</label>
+        <label>Chain: ${evmChainSelectHtml(pickedChain)}</label>
         <label>Payload:
           <textarea data-field="payload" rows="6">${defaultVal.replace(/</g, '&lt;')}</textarea>
         </label>
@@ -2368,6 +2386,13 @@ function renderEvmMsgCards() {
       <button class="primary btn-msg-sign">Sign</button>
       <div class="card-status">idle</div>`;
 
+    // Keep the visible payload's chainId in step with the picker, so switching
+    // chains can't leave a stale chainId on screen (and can't sign one either).
+    card.querySelector('[data-field="chain"]').addEventListener('change', (e) => {
+      const ta = card.querySelector('[data-field="payload"]');
+      const synced = syncDomainChainId(ta.value, e.target.value);
+      if (synced) ta.value = JSON.stringify(synced, null, 2);
+    });
     card.querySelector('.btn-msg-sign').addEventListener('click', () => handleEvmMsgSign(c, card));
     grid.appendChild(card);
   }
@@ -2385,14 +2410,23 @@ async function handleEvmMsgSign(c, card) {
 
   try {
     await ensureEvmChain(chain);
+    // The payload's chainId was baked in when the card rendered; ensureEvmChain
+    // may have just moved the wallet somewhere else. Re-point the domain at the
+    // selected chain so wallet and payload agree when we ask for a signature.
+    const synced = syncDomainChainId(raw, chain);
+    const body = synced ? JSON.stringify(synced, null, 2) : raw;
+    if (synced) {
+      card.querySelector('[data-field="payload"]').value = body;
+      $('out-unsigned').textContent = body;
+    }
     const from = evmSelf();
     setCardStatus('Requesting signature…');
     let sig;
-    if (c.method === 'eth_sign')                sig = await signEthSign(from, raw.trim());
-    else if (c.method === 'personal_sign')      sig = await signPersonal(from, raw);
-    else if (c.method === 'eth_signTypedData')  sig = await signTypedDataV1(from, JSON.parse(raw));
-    else if (c.method === 'eth_signTypedData_v3') sig = await signTypedDataV3(from, JSON.parse(raw));
-    else if (c.method === 'eth_signTypedData_v4') sig = await signTypedDataV4(from, JSON.parse(raw));
+    if (c.method === 'eth_sign')                sig = await signEthSign(from, body.trim());
+    else if (c.method === 'personal_sign')      sig = await signPersonal(from, body);
+    else if (c.method === 'eth_signTypedData')  sig = await signTypedDataV1(from, JSON.parse(body));
+    else if (c.method === 'eth_signTypedData_v3') sig = await signTypedDataV3(from, JSON.parse(body));
+    else if (c.method === 'eth_signTypedData_v4') sig = await signTypedDataV4(from, JSON.parse(body));
     else throw new Error('Unknown method: ' + c.method);
     $('out-signed').textContent = sig;
     setCardStatus('Signed.', 'ok');
